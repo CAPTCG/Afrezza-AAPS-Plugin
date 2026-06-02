@@ -79,6 +79,7 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "    1. Open in Android Studio" -ForegroundColor White
     Write-Host "    2. Run tests:  .\gradlew.bat :core:data:test --tests '*ICfgAfrezzaIobTest*'" -ForegroundColor White
     Write-Host "    3. Build APK:  .\gradlew.bat assembleFullDebug" -ForegroundColor White
+    Write-Host "    4. Build Wear: .\gradlew.bat :wear:assembleFullDebug" -ForegroundColor White
     Write-Host ""
 } else {
     Write-Host ""

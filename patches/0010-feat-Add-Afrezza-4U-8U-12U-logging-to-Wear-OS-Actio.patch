@@ -1,0 +1,510 @@
+From eafd5218aeeaa4a9aa5d985ff9fa9c5725e483fc Mon Sep 17 00:00:00 2001
+From: Afrezza Feature <afrezza-dev@aaps.app>
+Date: Tue, 2 Jun 2026 15:51:01 +0000
+Subject: [PATCH 10/10] feat: Add Afrezza 4U/8U/12U logging to Wear OS Actions tile
+
+- Add AfrezzaActivity with cartridge dose selection (4U, 8U, 12U)
+  and confirmation screen for Wear OS
+- Add ActionAfrezzaPreCheck and ActionAfrezzaConfirmed events to
+  EventData sealed class for watch-phone communication
+- Register Afrezza as selectable action in ActionSource tile config
+- Add phone-side handler in DataHandlerMobile that logs Afrezza bolus
+  directly via PersistenceLayer (bypasses pump queue for inhaled insulin)
+- Inject InsulinManager to look up Afrezza ICfg by peak time
+- Add ic_afrezza.xml inhaler icon drawable for wear tile
+- Add wear string resources and AndroidManifest activity registration
+- Add afrezza_not_configured error string to core/ui
+---
+ .../core/interfaces/rx/weardata/EventData.kt  |   6 +
+ core/ui/src/main/res/values/strings.xml       |   1 +
+ .../wear/wearintegration/DataHandlerMobile.kt |  85 ++++++++
+ wear/src/main/AndroidManifest.xml             |   5 +
+ .../app/aaps/wear/di/WearActivitiesModule.kt  |   2 +
+ .../interaction/actions/AfrezzaActivity.kt    | 201 ++++++++++++++++++
+ .../app/aaps/wear/tile/source/ActionSource.kt |   8 +
+ wear/src/main/res/drawable/ic_afrezza.xml     |  27 +++
+ wear/src/main/res/values/strings.xml          |   5 +
+ 9 files changed, 340 insertions(+)
+ create mode 100644 wear/src/main/kotlin/app/aaps/wear/interaction/actions/AfrezzaActivity.kt
+ create mode 100644 wear/src/main/res/drawable/ic_afrezza.xml
+
+diff --git a/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/rx/weardata/EventData.kt b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/rx/weardata/EventData.kt
+index 6f637866..36a283f5 100644
+--- a/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/rx/weardata/EventData.kt
++++ b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/rx/weardata/EventData.kt
+@@ -96,6 +96,9 @@ sealed class EventData : Event() {
+     @Serializable
+     data class ActionBolusPreCheck(val insulin: Double, val carbs: Int) : EventData()
+ 
++    @Serializable
++    data class ActionAfrezzaPreCheck(val units: Int) : EventData()
++
+     @Serializable
+     data class ActionFillPreCheck(val insulin: Double) : EventData()
+ 
+@@ -215,6 +218,9 @@ sealed class EventData : Event() {
+     @Serializable
+     data class ActionBolusConfirmed(val insulin: Double, val carbs: Int) : EventData()
+ 
++    @Serializable
++    data class ActionAfrezzaConfirmed(val units: Int) : EventData()
++
+     @Serializable
+     data class ActionECarbsConfirmed(val carbs: Int, val carbsTime: Long, val duration: Int) : EventData()
+ 
+diff --git a/core/ui/src/main/res/values/strings.xml b/core/ui/src/main/res/values/strings.xml
+index e41707e3..250cd5ce 100644
+--- a/core/ui/src/main/res/values/strings.xml
++++ b/core/ui/src/main/res/values/strings.xml
+@@ -743,6 +743,7 @@
+     <string name="wizard_explain_tt">TempT: %1$s</string>
+     <string name="wizard_explain_tt_to">%1$s to %2$s</string>
+     <string name="wizard_pump_not_available">No pump available!</string>
++    <string name="afrezza_not_configured">Add Afrezza insulin in Insulin Management first</string>
+     <string name="quickwizard_managemnt">QuickWizard</string>
+ 
+ 
+diff --git a/plugins/sync/src/main/kotlin/app/aaps/plugins/sync/wear/wearintegration/DataHandlerMobile.kt b/plugins/sync/src/main/kotlin/app/aaps/plugins/sync/wear/wearintegration/DataHandlerMobile.kt
+index 9d25697e..56d850b8 100644
+--- a/plugins/sync/src/main/kotlin/app/aaps/plugins/sync/wear/wearintegration/DataHandlerMobile.kt
++++ b/plugins/sync/src/main/kotlin/app/aaps/plugins/sync/wear/wearintegration/DataHandlerMobile.kt
+@@ -11,6 +11,7 @@ import app.aaps.core.data.model.BS
+ import app.aaps.core.data.model.GV
+ import app.aaps.core.data.model.GlucoseUnit
+ import app.aaps.core.data.model.HR
++import app.aaps.core.data.model.IDs
+ import app.aaps.core.data.model.RM
+ import app.aaps.core.data.model.SC
+ import app.aaps.core.data.model.Scene
+@@ -34,6 +35,8 @@ import app.aaps.core.interfaces.db.PersistenceLayer
+ import app.aaps.core.interfaces.db.ProcessedTbrEbData
+ import app.aaps.core.interfaces.insulin.ConcentrationHelper
+ import app.aaps.core.interfaces.insulin.Insulin
++import app.aaps.core.interfaces.insulin.InsulinManager
++import app.aaps.core.interfaces.insulin.InsulinType
+ import app.aaps.core.interfaces.iob.GlucoseStatusProvider
+ import app.aaps.core.interfaces.iob.IobCobCalculator
+ import app.aaps.core.interfaces.logging.AAPSLogger
+@@ -142,6 +145,7 @@ class DataHandlerMobile @Inject constructor(
+     private val uel: UserEntryLogger,
+     private val activePlugin: ActivePlugin,
+     private val insulin: Insulin,
++    private val insulinManager: InsulinManager,
+     private val commandQueue: CommandQueue,
+     private val fabricPrivacy: FabricPrivacy,
+     private val uiInteraction: UiInteraction,
+@@ -388,6 +392,30 @@ class DataHandlerMobile @Inject constructor(
+                     .onErrorComplete()
+             }
+             .subscribe()
++        disposable += rxBus
++            .toObservable(EventData.ActionAfrezzaPreCheck::class.java)
++            .observeOn(aapsSchedulers.io)
++            .concatMapCompletable {
++                rxCompletable {
++                    aapsLogger.debug(LTag.WEAR, "ActionAfrezzaPreCheck received $it from ${it.sourceNodeId}")
++                    handleAfrezzaPreCheck(it)
++                }
++                    .doOnError(fabricPrivacy::logException)
++                    .onErrorComplete()
++            }
++            .subscribe()
++        disposable += rxBus
++            .toObservable(EventData.ActionAfrezzaConfirmed::class.java)
++            .observeOn(aapsSchedulers.io)
++            .concatMapCompletable {
++                rxCompletable {
++                    aapsLogger.debug(LTag.WEAR, "ActionAfrezzaConfirmed received $it from ${it.sourceNodeId}")
++                    doAfrezzaBolus(it.units)
++                }
++                    .doOnError(fabricPrivacy::logException)
++                    .onErrorComplete()
++            }
++            .subscribe()
+         disposable += rxBus
+             .toObservable(EventData.ActionECarbsPreCheck::class.java)
+             .observeOn(aapsSchedulers.io)
+@@ -1144,6 +1172,63 @@ class DataHandlerMobile @Inject constructor(
+         )
+     }
+ 
++    private suspend fun handleAfrezzaPreCheck(command: EventData.ActionAfrezzaPreCheck) {
++        val units = command.units
++        if (units !in listOf(4, 8, 12)) {
++            sendError("Invalid Afrezza cartridge: ${units}U")
++            return
++        }
++        // Find the Afrezza ICfg from InsulinManager
++        val afrezzaPeak = InsulinType.OREF_INHALED_AFREZZA.insulinPeakTime
++        val afrezzaIcfg = insulinManager.insulins.firstOrNull { it.insulinPeakTime == afrezzaPeak }
++            ?: insulinManager.insulins.firstOrNull { InsulinType.fromPeak(it.insulinPeakTime).isInhaled }
++        if (afrezzaIcfg == null) {
++            sendError(rh.gs(app.aaps.core.ui.R.string.afrezza_not_configured))
++            return
++        }
++        val message = "Afrezza: ${units}U"
++        rxBus.send(
++            EventMobileToWear(
++                EventData.ConfirmAction(
++                    rh.gs(app.aaps.core.ui.R.string.confirm).uppercase(), message,
++                    returnCommand = EventData.ActionAfrezzaConfirmed(units),
++                    insulin = units.toDouble(),
++                )
++            )
++        )
++    }
++
++    private suspend fun doAfrezzaBolus(units: Int) {
++        val afrezzaPeak = InsulinType.OREF_INHALED_AFREZZA.insulinPeakTime
++        val afrezzaIcfg = insulinManager.insulins.firstOrNull { it.insulinPeakTime == afrezzaPeak }
++            ?: insulinManager.insulins.firstOrNull { InsulinType.fromPeak(it.insulinPeakTime).isInhaled }
++        if (afrezzaIcfg == null) {
++            sendError(rh.gs(app.aaps.core.ui.R.string.afrezza_not_configured))
++            return
++        }
++        val now = dateUtil.now()
++        val bolus = BS(
++            timestamp = now,
++            amount = units.toDouble(),
++            type = BS.Type.NORMAL,
++            notes = "Afrezza inhaled",
++            iCfg = afrezzaIcfg,
++            ids = IDs(pumpId = now)
++        )
++        persistenceLayer.insertOrUpdateBolus(
++            bolus = bolus,
++            action = Action.BOLUS,
++            source = Sources.Wear,
++            note = "Afrezza inhaled"
++        )
++        uel.log(
++            action = Action.BOLUS, source = Sources.Wear,
++            "Afrezza inhaled",
++            ValueWithUnit.Insulin(units.toDouble())
++        )
++        aapsLogger.info(LTag.WEAR, "Afrezza ${units}U logged via Wear with ICfg: ${afrezzaIcfg.insulinLabel}")
++    }
++
+     private fun handleECarbsPreCheck(command: EventData.ActionECarbsPreCheck) {
+         val startTimeStamp = System.currentTimeMillis() + T.mins(command.carbsTimeShift.toLong()).msecs()
+         val cob = iobCobCalculator.ads.getLastAutosensData("carbsDialog", aapsLogger, dateUtil)?.cob ?: 0.0
+diff --git a/wear/src/main/AndroidManifest.xml b/wear/src/main/AndroidManifest.xml
+index adf570ec..1043c6fe 100644
+--- a/wear/src/main/AndroidManifest.xml
++++ b/wear/src/main/AndroidManifest.xml
+@@ -715,6 +715,11 @@
+             android:exported="true"
+             android:label="@string/action_insulin"
+             android:theme="@style/WearAppCompatDark" />
++        <activity
++            android:name=".interaction.actions.AfrezzaActivity"
++            android:exported="true"
++            android:label="@string/action_afrezza"
++            android:theme="@style/WearAppCompatDark" />
+         <activity
+             android:name=".interaction.actions.ProfileSwitchActivity"
+             android:exported="true"
+diff --git a/wear/src/main/kotlin/app/aaps/wear/di/WearActivitiesModule.kt b/wear/src/main/kotlin/app/aaps/wear/di/WearActivitiesModule.kt
+index 8a711ff7..9c9fc91d 100644
+--- a/wear/src/main/kotlin/app/aaps/wear/di/WearActivitiesModule.kt
++++ b/wear/src/main/kotlin/app/aaps/wear/di/WearActivitiesModule.kt
+@@ -7,6 +7,7 @@ import app.aaps.wear.tile.ActionsTileSettingsActivity
+ import app.aaps.wear.tile.BgGraphTileSettingsActivity
+ import app.aaps.wear.tile.TempTargetTileSettingsActivity
+ import app.aaps.wear.interaction.actions.AcceptActivity
++import app.aaps.wear.interaction.actions.AfrezzaActivity
+ import app.aaps.wear.interaction.actions.BackgroundActionActivity
+ import app.aaps.wear.interaction.actions.BolusActivity
+ import app.aaps.wear.interaction.actions.CarbActivity
+@@ -43,6 +44,7 @@ abstract class WearActivitiesModule {
+     @ContributesAndroidInjector abstract fun contributesBackgroundActionActivity(): BackgroundActionActivity
+ 
+     @ContributesAndroidInjector abstract fun contributesAcceptActivity(): AcceptActivity
++    @ContributesAndroidInjector abstract fun contributesAfrezzaActivity(): AfrezzaActivity
+     @ContributesAndroidInjector abstract fun contributesBolusActivity(): BolusActivity
+     @ContributesAndroidInjector abstract fun contributesCarbActivity(): CarbActivity
+     @ContributesAndroidInjector abstract fun contributesProfileSwitchActivity(): ProfileSwitchActivity
+diff --git a/wear/src/main/kotlin/app/aaps/wear/interaction/actions/AfrezzaActivity.kt b/wear/src/main/kotlin/app/aaps/wear/interaction/actions/AfrezzaActivity.kt
+new file mode 100644
+index 00000000..2c620cbe
+--- /dev/null
++++ b/wear/src/main/kotlin/app/aaps/wear/interaction/actions/AfrezzaActivity.kt
+@@ -0,0 +1,201 @@
++package app.aaps.wear.interaction.actions
++
++import android.content.Intent
++import android.os.Bundle
++import androidx.activity.compose.setContent
++import androidx.compose.foundation.background
++import androidx.compose.foundation.clickable
++import androidx.compose.foundation.layout.Arrangement
++import androidx.compose.foundation.layout.Box
++import androidx.compose.foundation.layout.Column
++import androidx.compose.foundation.layout.Row
++import androidx.compose.foundation.layout.Spacer
++import androidx.compose.foundation.layout.fillMaxSize
++import androidx.compose.foundation.layout.height
++import androidx.compose.foundation.layout.padding
++import androidx.compose.foundation.layout.size
++import androidx.compose.foundation.layout.width
++import androidx.compose.foundation.shape.CircleShape
++import androidx.compose.runtime.Composable
++import androidx.compose.runtime.getValue
++import androidx.compose.runtime.mutableIntStateOf
++import androidx.compose.runtime.mutableStateOf
++import androidx.compose.runtime.remember
++import androidx.compose.runtime.setValue
++import androidx.compose.ui.Alignment
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.draw.clip
++import androidx.compose.ui.graphics.Color
++import androidx.compose.ui.hapticfeedback.HapticFeedbackType
++import androidx.compose.ui.platform.LocalHapticFeedback
++import androidx.compose.ui.res.painterResource
++import androidx.compose.ui.res.stringResource
++import androidx.compose.ui.text.font.FontWeight
++import androidx.compose.ui.text.style.TextAlign
++import androidx.compose.ui.unit.dp
++import androidx.compose.ui.unit.sp
++import androidx.wear.activity.ConfirmationActivity
++import androidx.wear.compose.foundation.pager.HorizontalPager
++import androidx.wear.compose.foundation.pager.rememberPagerState
++import androidx.wear.compose.material3.HorizontalPageIndicator
++import androidx.wear.compose.material3.Icon
++import androidx.wear.compose.material3.MaterialTheme
++import androidx.wear.compose.material3.Text
++import app.aaps.core.interfaces.rx.bus.RxBus
++import app.aaps.core.interfaces.rx.events.EventWearToMobile
++import app.aaps.core.interfaces.rx.weardata.EventData.ActionAfrezzaPreCheck
++import app.aaps.wear.R
++import dagger.android.support.DaggerAppCompatActivity
++import javax.inject.Inject
++
++private val AfrezzaTeal = Color(0xFF26A69A)
++private val AfrezzaTealDark = Color(0xFF00695C)
++
++class AfrezzaActivity : DaggerAppCompatActivity() {
++
++    @Inject lateinit var rxBus: RxBus
++
++    override fun onCreate(savedInstanceState: Bundle?) {
++        super.onCreate(savedInstanceState)
++
++        setContent {
++            MaterialTheme {
++                var selectedUnits by remember { mutableIntStateOf(0) }
++                val pagerState = rememberPagerState(pageCount = { 2 })
++
++                Box(modifier = Modifier.fillMaxSize()) {
++                    HorizontalPager(
++                        state = pagerState,
++                    ) { page ->
++                        when (page) {
++                            0 -> AfrezzaDoseSelectScreen(
++                                onDoseSelected = { selectedUnits = it },
++                                selectedUnits = selectedUnits,
++                            )
++                            else -> AfrezzaConfirmScreen(
++                                units = selectedUnits,
++                                onConfirm = { confirmAfrezza(selectedUnits) },
++                            )
++                        }
++                    }
++                    HorizontalPageIndicator(
++                        pagerState = pagerState,
++                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp)
++                    )
++                }
++            }
++        }
++    }
++
++    private fun confirmAfrezza(units: Int) {
++        rxBus.send(EventWearToMobile(ActionAfrezzaPreCheck(units)))
++        startActivity(
++            Intent(this, ConfirmationActivity::class.java).apply {
++                putExtra(ConfirmationActivity.EXTRA_ANIMATION_TYPE, ConfirmationActivity.SUCCESS_ANIMATION)
++                putExtra(ConfirmationActivity.EXTRA_MESSAGE, getString(R.string.action_afrezza_confirmation))
++            }
++        )
++        finish()
++    }
++}
++
++@Composable
++private fun AfrezzaDoseSelectScreen(
++    onDoseSelected: (Int) -> Unit,
++    selectedUnits: Int,
++) {
++    val haptic = LocalHapticFeedback.current
++
++    Column(
++        modifier = Modifier
++            .fillMaxSize()
++            .padding(horizontal = 12.dp, vertical = 8.dp),
++        horizontalAlignment = Alignment.CenterHorizontally,
++        verticalArrangement = Arrangement.Center
++    ) {
++        Text(
++            text = stringResource(R.string.action_afrezza_select_dose),
++            color = Color.White,
++            fontSize = 14.sp,
++            fontWeight = FontWeight.Bold,
++            textAlign = TextAlign.Center,
++        )
++        Spacer(Modifier.height(10.dp))
++        Row(
++            horizontalArrangement = Arrangement.Center,
++            verticalAlignment = Alignment.CenterVertically,
++        ) {
++            for (dose in listOf(4, 8, 12)) {
++                val isSelected = selectedUnits == dose
++                Box(
++                    modifier = Modifier
++                        .size(52.dp)
++                        .clip(CircleShape)
++                        .background(if (isSelected) AfrezzaTeal else AfrezzaTealDark)
++                        .clickable {
++                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
++                            onDoseSelected(dose)
++                        },
++                    contentAlignment = Alignment.Center
++                ) {
++                    Text(
++                        text = "${dose}U",
++                        color = Color.White,
++                        fontSize = 16.sp,
++                        fontWeight = FontWeight.Bold,
++                        textAlign = TextAlign.Center,
++                    )
++                }
++                if (dose != 12) Spacer(Modifier.width(8.dp))
++            }
++        }
++    }
++}
++
++@Composable
++private fun AfrezzaConfirmScreen(units: Int, onConfirm: () -> Unit) {
++    val haptic = LocalHapticFeedback.current
++    var confirmationSent by remember { mutableStateOf(false) }
++
++    Column(
++        modifier = Modifier
++            .fillMaxSize()
++            .padding(horizontal = 24.dp, vertical = 8.dp),
++        horizontalAlignment = Alignment.CenterHorizontally,
++        verticalArrangement = Arrangement.Center
++    ) {
++        Text(
++            text = stringResource(R.string.action_afrezza_confirm_log, units),
++            color = Color.White,
++            fontSize = 18.sp,
++            fontWeight = FontWeight.Bold,
++            textAlign = TextAlign.Center,
++        )
++        Spacer(Modifier.height(8.dp))
++        Box(
++            modifier = Modifier
++                .size(90.dp)
++                .clip(CircleShape)
++                .clickable(enabled = units > 0 && !confirmationSent) {
++                    confirmationSent = true
++                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
++                    onConfirm()
++                },
++            contentAlignment = Alignment.Center
++        ) {
++            Icon(
++                painter = painterResource(R.drawable.ic_confirm),
++                contentDescription = stringResource(R.string.confirm),
++                tint = ConfirmGreen,
++                modifier = Modifier.fillMaxSize()
++            )
++        }
++        Spacer(Modifier.height(4.dp))
++        Text(
++            text = "${units}U Afrezza",
++            color = AfrezzaTeal,
++            fontSize = 20.sp,
++            fontWeight = FontWeight.Bold,
++        )
++    }
++}
+diff --git a/wear/src/main/kotlin/app/aaps/wear/tile/source/ActionSource.kt b/wear/src/main/kotlin/app/aaps/wear/tile/source/ActionSource.kt
+index d155e3fe..9c32081c 100644
+--- a/wear/src/main/kotlin/app/aaps/wear/tile/source/ActionSource.kt
++++ b/wear/src/main/kotlin/app/aaps/wear/tile/source/ActionSource.kt
+@@ -10,6 +10,7 @@ import app.aaps.wear.interaction.actions.BackgroundActionActivity
+ import app.aaps.wear.interaction.actions.BolusActivity
+ import app.aaps.wear.interaction.actions.CarbActivity
+ import app.aaps.wear.interaction.actions.ECarbActivity
++import app.aaps.wear.interaction.actions.AfrezzaActivity
+ import app.aaps.wear.interaction.actions.TempTargetActivity
+ import app.aaps.wear.interaction.actions.TreatmentActivity
+ import app.aaps.wear.interaction.actions.WizardActivity
+@@ -43,6 +44,13 @@ class ActionSource @Inject constructor(context: Context, sp: SP, aapsLogger: AAP
+                 iconRes = R.drawable.ic_bolus,
+                 activityClass = BolusActivity::class.java.name,
+             ),
++            StaticAction(
++                settingName = "afrezza",
++                buttonText = resources.getString(R.string.action_afrezza_short),
++                settingLabel = resources.getString(R.string.action_afrezza),
++                iconRes = R.drawable.ic_afrezza,
++                activityClass = AfrezzaActivity::class.java.name,
++            ),
+             StaticAction(
+                 settingName = "carbs",
+                 buttonText = resources.getString(R.string.action_carbs),
+diff --git a/wear/src/main/res/drawable/ic_afrezza.xml b/wear/src/main/res/drawable/ic_afrezza.xml
+new file mode 100644
+index 00000000..a5eb01b9
+--- /dev/null
++++ b/wear/src/main/res/drawable/ic_afrezza.xml
+@@ -0,0 +1,27 @@
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="24dp"
++    android:height="24dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24"
++    android:tint="?attr/colorControlNormal">
++    <!-- Simplified inhaler icon: mouthpiece + cartridge body + puff lines -->
++    <!-- Inhaler body -->
++    <path
++        android:pathData="M7,8 L11,8 L11,4 L15,4 L15,8 L17,8 L17,18 L7,18 Z"
++        android:fillColor="@android:color/white" />
++    <!-- Mouthpiece -->
++    <path
++        android:pathData="M9,18 L15,18 L14,22 L10,22 Z"
++        android:fillColor="@android:color/white" />
++    <!-- Puff cloud lines -->
++    <path
++        android:pathData="M5,6 C4,5 4,4 5,3"
++        android:strokeWidth="1"
++        android:strokeColor="@android:color/white"
++        android:fillColor="#00000000" />
++    <path
++        android:pathData="M3,7 C2,6 2,5 3,4"
++        android:strokeWidth="1"
++        android:strokeColor="@android:color/white"
++        android:fillColor="#00000000" />
++</vector>
+diff --git a/wear/src/main/res/values/strings.xml b/wear/src/main/res/values/strings.xml
+index e35902de..7d06555b 100644
+--- a/wear/src/main/res/values/strings.xml
++++ b/wear/src/main/res/values/strings.xml
+@@ -89,6 +89,11 @@
+     <string name="scene_stop">STOP</string>
+     <string name="action_treatment_confirmation">Treatment Requested</string>
+     <string name="action_bolus_confirmation">Bolus Requested</string>
++    <string name="action_afrezza">Afrezza</string>
++    <string name="action_afrezza_short">Afrz</string>
++    <string name="action_afrezza_confirmation">Afrezza Requested</string>
++    <string name="action_afrezza_select_dose">Select Cartridge</string>
++    <string name="action_afrezza_confirm_log">Log %1$dU?</string>
+     <string name="action_wizard_confirmation">Calculation Requested</string>
+     <string name="action_fill_confirmation">Fill Requested</string>
+     <string name="action_ecarb_confirmation">Carbs Requested</string>
+-- 
+2.43.0

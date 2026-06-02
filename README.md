@@ -35,8 +35,12 @@ The AAPS `dev` branch already supports **per-bolus insulin configurations** — 
 | `QuickLaunchAction` | Afrezza available for home screen quick-launch bar |
 | `Sources` | New `AfrezzaDialog` source for UserEntry/treatment history |
 | IOB Tests | 179-line test suite validating the oref model at Afrezza parameters |
+| `AfrezzaActivity` (Wear) | New Compose activity for 4U/8U/12U cartridge selection on watch |
+| `ActionSource` (Wear) | Afrezza added to Wear OS Actions tile as a configurable action |
+| `EventData` | New `ActionAfrezzaPreCheck` / `ActionAfrezzaConfirmed` sealed events |
+| `DataHandlerMobile` | Phone-side handler logs Afrezza via PersistenceLayer (bypasses pump queue) |
 
-**Total: 27 files changed, ~607 lines added.**
+**Total: 36 files changed, ~947 lines added.**
 
 ---
 
@@ -128,6 +132,7 @@ git am ../afrezza-aaps-plugin/patches/0006-feat-Add-Afrezza-to-navigation-system
 git am ../afrezza-aaps-plugin/patches/0007-feat-Wire-Afrezza-dialog-into-navigation-quick-launc.patch
 git am ../afrezza-aaps-plugin/patches/0008-feat-Add-Afrezza-button-to-Treatment-Bottom-Sheet.patch
 git am ../afrezza-aaps-plugin/patches/0009-feat-Add-Sources.AfrezzaDialog-for-treatment-history.patch
+git am ../afrezza-aaps-plugin/patches/0010-feat-Add-Afrezza-4U-8U-12U-logging-to-Wear-OS-Actio.patch
 ```
 
 ### Step 6: Verify the Patches Applied
@@ -136,7 +141,7 @@ git am ../afrezza-aaps-plugin/patches/0009-feat-Add-Sources.AfrezzaDialog-for-tr
 git log --oneline -10
 ```
 
-You should see 9 new commits starting with `feat: Add Afrezza...`
+You should see 10 new commits starting with `feat: Add Afrezza...`
 
 ### Step 7: Open in Android Studio
 
@@ -222,6 +227,19 @@ You can also log Afrezza through the regular Insulin Dialog:
 4. Enter the dose
 5. Confirm
 
+### Logging Afrezza from Your Watch (Wear OS)
+
+The Afrezza action is available in the Wear OS **Actions tile**:
+
+1. On your watch, open the AAPS Actions tile settings
+2. Assign one of the tile slots to **Afrezza** (listed as "Afrz")
+3. To log a dose, tap the Afrezza tile button
+4. Select your cartridge: **4U**, **8U**, or **12U**
+5. Swipe to the confirmation page and tap the green check
+6. Accept the confirmation prompt on the watch
+
+The dose is logged directly to the persistence layer with the correct Afrezza ICfg — it does **not** go through the pump command queue since Afrezza is inhaled, not pump-delivered.
+
 ---
 
 ## Pharmacokinetic Parameters
@@ -252,21 +270,25 @@ The oref bilinear IOB model is used with these parameters. The included test sui
 | 7 | `feat: Wire Afrezza dialog into navigation, quick-launch, and routing` | AppRoute + NavGraph + QuickLaunch + staticActions |
 | 8 | `feat: Add Afrezza button to Treatment Bottom Sheet` | Auto-appears when inhaled insulin configured, includes Preview |
 | 9 | `feat: Add Sources.AfrezzaDialog for treatment history` | Sources enum, DB enum, SourcesExtension, UserEntryPresentation |
+| 10 | `feat: Add Afrezza 4U/8U/12U logging to Wear OS Actions tile` | AfrezzaActivity, EventData events, ActionSource, DataHandlerMobile handler |
 
 ### Files Changed (by module)
 
 ```
 app/                          — ComposeMainActivity, AppNavGraph, AppRoute
 core/data/                    — Sources enum, IOB curve tests
-core/interfaces/              — InsulinType, HardLimits, strings
+core/interfaces/              — InsulinType, HardLimits, EventData (Afrezza events), strings
 core/ui/                      — ElementType, ElementTypeStyle, strings
 database/impl/                — UserEntry.Sources DB enum
 database/persistence/         — SourcesExtension bidirectional mapping
 implementation/               — InsulinImpl, HardLimitsImpl, UserEntryPresentationHelperImpl
+plugins/sync/                 — DataHandlerMobile (Wear <-> phone Afrezza event handling)
 shared/tests/                 — HardLimitsMock
 ui/                           — AfrezzaDialog (3 files), InsulinManagementViewModel,
                                 MainScreen, QuickLaunchAction, TreatmentBottomSheet,
                                 TreatmentUiState, TreatmentViewModel, strings
+wear/                         — AfrezzaActivity, ActionSource, WearActivitiesModule,
+                                ic_afrezza drawable, AndroidManifest, strings
 ```
 
 ### Base Commit
@@ -317,7 +339,7 @@ If Afrezza IOB isn't decaying as expected, verify that the logged bolus has the 
 
 ## Contributing
 
-If you improve these patches or add features (Wear OS tile, automation triggers, etc.), please submit a PR to this repository. The goal is to eventually submit this as a PR to the upstream AAPS repository.
+If you improve these patches or add features (automation triggers, Nightscout sync, etc.), please submit a PR to this repository. The goal is to eventually submit this as a PR to the upstream AAPS repository.
 
 ### Regenerating Patches
 

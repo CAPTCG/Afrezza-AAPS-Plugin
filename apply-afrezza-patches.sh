@@ -75,6 +75,7 @@ if git am --3way < "$PATCHES_DIR/afrezza-combined.patch"; then
     echo "    1. Open in Android Studio"
     echo "    2. Run tests:  ./gradlew :core:data:test --tests '*ICfgAfrezzaIobTest*'"
     echo "    3. Build APK:  ./gradlew assembleFullDebug"
+    echo "    4. Build Wear: ./gradlew :wear:assembleFullDebug"
     echo ""
 else
     echo ""
