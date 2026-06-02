@@ -1,0 +1,394 @@
+From 385640dd8a650af482df29f38e5968abc510b9b0 Mon Sep 17 00:00:00 2001
+From: Afrezza Feature <afrezza-dev@aaps.app>
+Date: Tue, 2 Jun 2026 01:14:32 +0000
+Subject: [PATCH 5/9] feat: Add Afrezza quick-log dialog for one-tap dose
+ logging
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+New Compose bottom sheet dialog with three large cartridge-size buttons
+(4U, 8U, 12U) for rapid Afrezza dose logging:
+
+- AfrezzaDialogScreen: Bottom sheet with cartridge selection UI
+- AfrezzaDialogViewModel: Resolves Afrezza ICfg from InsulinManager,
+  creates record-only bolus with correct per-bolus ICfg
+- AfrezzaDialogUiState: Minimal state for cartridge selection flow
+
+User flow: tap cartridge → confirm → done (2 taps total).
+Bolus is created as record-only with Afrezza ICfg, ensuring the
+IOB calculator uses the correct short-DIA curve.
+
+Shows error state if Afrezza insulin hasn't been added in
+Insulin Management yet.
+---
+ .../afrezzaDialog/AfrezzaDialogScreen.kt      | 192 ++++++++++++++++++
+ .../afrezzaDialog/AfrezzaDialogUiState.kt     |  13 ++
+ .../afrezzaDialog/AfrezzaDialogViewModel.kt   | 136 +++++++++++++
+ 3 files changed, 341 insertions(+)
+ create mode 100644 ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogScreen.kt
+ create mode 100644 ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogUiState.kt
+ create mode 100644 ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogViewModel.kt
+
+diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogScreen.kt b/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogScreen.kt
+new file mode 100644
+index 0000000..e9b3165
+--- /dev/null
++++ b/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogScreen.kt
+@@ -0,0 +1,192 @@
++package app.aaps.ui.compose.afrezzaDialog
++
++import androidx.compose.foundation.layout.Arrangement
++import androidx.compose.foundation.layout.Column
++import androidx.compose.foundation.layout.Row
++import androidx.compose.foundation.layout.Spacer
++import androidx.compose.foundation.layout.fillMaxWidth
++import androidx.compose.foundation.layout.height
++import androidx.compose.foundation.layout.padding
++import androidx.compose.foundation.layout.size
++import androidx.compose.foundation.shape.RoundedCornerShape
++import androidx.compose.material3.Button
++import androidx.compose.material3.ButtonDefaults
++import androidx.compose.material3.Card
++import androidx.compose.material3.CardDefaults
++import androidx.compose.material3.ExperimentalMaterial3Api
++import androidx.compose.material3.MaterialTheme
++import androidx.compose.material3.ModalBottomSheet
++import androidx.compose.material3.Text
++import androidx.compose.material3.rememberModalBottomSheetState
++import androidx.compose.runtime.Composable
++import androidx.compose.runtime.LaunchedEffect
++import androidx.compose.runtime.getValue
++import androidx.compose.ui.Alignment
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.res.stringResource
++import androidx.compose.ui.text.font.FontWeight
++import androidx.compose.ui.text.style.TextAlign
++import androidx.compose.ui.tooling.preview.Preview
++import androidx.compose.ui.unit.dp
++import androidx.compose.ui.unit.sp
++import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
++import androidx.lifecycle.compose.collectAsStateWithLifecycle
++import app.aaps.core.ui.compose.dialogs.OkCancelDialog
++import app.aaps.core.ui.compose.navigation.ElementType
++import app.aaps.core.ui.compose.navigation.color
++import app.aaps.core.ui.compose.navigation.icon
++import app.aaps.ui.R
++import app.aaps.core.ui.R as CoreUiR
++
++@OptIn(ExperimentalMaterial3Api::class)
++@Composable
++fun AfrezzaDialogScreen(
++    viewModel: AfrezzaDialogViewModel = hiltViewModel(),
++    onNavigateBack: () -> Unit,
++    onShowMessage: (String) -> Unit
++) {
++    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
++    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
++
++    // Observe side effects
++    LaunchedEffect(Unit) {
++        viewModel.sideEffect.collect { effect ->
++            when (effect) {
++                is AfrezzaDialogViewModel.SideEffect.ShowMessage -> onShowMessage(effect.message)
++                is AfrezzaDialogViewModel.SideEffect.DoseLogged -> onNavigateBack()
++            }
++        }
++    }
++
++    // Confirmation dialog
++    if (uiState.showConfirmation && uiState.selectedCartridge != null) {
++        OkCancelDialog(
++            title = stringResource(R.string.log_afrezza_dose),
++            message = stringResource(R.string.afrezza_confirm_log, uiState.selectedCartridge!!),
++            icon = ElementType.INSULIN.icon(),
++            iconTint = ElementType.INSULIN.color(),
++            onConfirm = { viewModel.confirmAndLog() },
++            onDismiss = { viewModel.dismissConfirmation() }
++        )
++    }
++
++    ModalBottomSheet(
++        onDismissRequest = onNavigateBack,
++        sheetState = sheetState,
++        containerColor = MaterialTheme.colorScheme.surface
++    ) {
++        if (!uiState.isConfigured) {
++            // Afrezza not yet added in Insulin Management
++            AfrezzaNotConfiguredContent()
++        } else {
++            AfrezzaCartridgeSelector(
++                onCartridgeSelected = { units -> viewModel.selectCartridge(units) },
++                isLogging = uiState.isLogging,
++                insulinLabel = uiState.afrezzaIcfg?.insulinLabel ?: ""
++            )
++        }
++    }
++}
++
++@Composable
++private fun AfrezzaCartridgeSelector(
++    onCartridgeSelected: (Int) -> Unit,
++    isLogging: Boolean,
++    insulinLabel: String
++) {
++    Column(
++        modifier = Modifier
++            .fillMaxWidth()
++            .padding(start = 24.dp, end = 24.dp, bottom = 32.dp),
++        horizontalAlignment = Alignment.CenterHorizontally
++    ) {
++        Text(
++            text = stringResource(R.string.log_afrezza_dose),
++            style = MaterialTheme.typography.titleLarge,
++            fontWeight = FontWeight.Bold
++        )
++
++        Spacer(modifier = Modifier.height(4.dp))
++
++        Text(
++            text = insulinLabel,
++            style = MaterialTheme.typography.bodyMedium,
++            color = MaterialTheme.colorScheme.onSurfaceVariant
++        )
++
++        Spacer(modifier = Modifier.height(24.dp))
++
++        Row(
++            modifier = Modifier.fillMaxWidth(),
++            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
++        ) {
++            CartridgeButton(units = 4, onClick = { onCartridgeSelected(4) }, enabled = !isLogging)
++            CartridgeButton(units = 8, onClick = { onCartridgeSelected(8) }, enabled = !isLogging)
++            CartridgeButton(units = 12, onClick = { onCartridgeSelected(12) }, enabled = !isLogging)
++        }
++
++        Spacer(modifier = Modifier.height(16.dp))
++    }
++}
++
++@Composable
++private fun CartridgeButton(
++    units: Int,
++    onClick: () -> Unit,
++    enabled: Boolean = true
++) {
++    Button(
++        onClick = onClick,
++        enabled = enabled,
++        modifier = Modifier.size(100.dp),
++        shape = RoundedCornerShape(16.dp),
++        colors = ButtonDefaults.buttonColors(
++            containerColor = MaterialTheme.colorScheme.primaryContainer,
++            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
++        )
++    ) {
++        Column(horizontalAlignment = Alignment.CenterHorizontally) {
++            Text(
++                text = "$units",
++                fontSize = 28.sp,
++                fontWeight = FontWeight.Bold
++            )
++            Text(
++                text = "units",
++                fontSize = 12.sp
++            )
++        }
++    }
++}
++
++@Composable
++private fun AfrezzaNotConfiguredContent() {
++    Card(
++        modifier = Modifier
++            .fillMaxWidth()
++            .padding(24.dp),
++        colors = CardDefaults.cardColors(
++            containerColor = MaterialTheme.colorScheme.errorContainer
++        )
++    ) {
++        Text(
++            text = stringResource(R.string.afrezza_not_configured),
++            modifier = Modifier.padding(16.dp),
++            style = MaterialTheme.typography.bodyLarge,
++            color = MaterialTheme.colorScheme.onErrorContainer,
++            textAlign = TextAlign.Center
++        )
++    }
++}
++
++@Preview(showBackground = true)
++@Composable
++private fun AfrezzaCartridgeSelectorPreview() {
++    MaterialTheme {
++        AfrezzaCartridgeSelector(
++            onCartridgeSelected = {},
++            isLogging = false,
++            insulinLabel = "Afrezza (Inhaled) 40m 2.5h U100"
++        )
++    }
++}
+diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogUiState.kt b/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogUiState.kt
+new file mode 100644
+index 0000000..9fe4cc8
+--- /dev/null
++++ b/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogUiState.kt
+@@ -0,0 +1,13 @@
++package app.aaps.ui.compose.afrezzaDialog
++
++import androidx.compose.runtime.Immutable
++import app.aaps.core.data.model.ICfg
++
++@Immutable
++data class AfrezzaDialogUiState(
++    val selectedCartridge: Int? = null,       // 4, 8, or 12
++    val afrezzaIcfg: ICfg? = null,           // Resolved Afrezza ICfg from InsulinManager
++    val isConfigured: Boolean = false,        // Whether Afrezza insulin exists in InsulinManager
++    val showConfirmation: Boolean = false,
++    val isLogging: Boolean = false
++)
+diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogViewModel.kt b/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogViewModel.kt
+new file mode 100644
+index 0000000..26c0b1b
+--- /dev/null
++++ b/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogViewModel.kt
+@@ -0,0 +1,136 @@
++package app.aaps.ui.compose.afrezzaDialog
++
++import androidx.compose.runtime.Stable
++import androidx.lifecycle.ViewModel
++import androidx.lifecycle.viewModelScope
++import app.aaps.core.data.model.BS
++import app.aaps.core.data.model.ICfg
++import app.aaps.core.data.model.IDs
++import app.aaps.core.data.model.TE
++import app.aaps.core.data.ue.Action
++import app.aaps.core.data.ue.Sources
++import app.aaps.core.data.ue.ValueWithUnit
++import app.aaps.core.interfaces.db.PersistenceLayer
++import app.aaps.core.interfaces.insulin.InsulinManager
++import app.aaps.core.interfaces.insulin.InsulinType
++import app.aaps.core.interfaces.logging.AAPSLogger
++import app.aaps.core.interfaces.logging.LTag
++import app.aaps.core.interfaces.logging.UserEntryLogger
++import app.aaps.core.interfaces.resources.ResourceHelper
++import app.aaps.core.interfaces.utils.DateUtil
++import app.aaps.ui.R
++import dagger.hilt.android.lifecycle.HiltViewModel
++import kotlinx.coroutines.channels.BufferOverflow
++import kotlinx.coroutines.flow.MutableSharedFlow
++import kotlinx.coroutines.flow.MutableStateFlow
++import kotlinx.coroutines.flow.SharedFlow
++import kotlinx.coroutines.flow.StateFlow
++import kotlinx.coroutines.flow.asSharedFlow
++import kotlinx.coroutines.flow.asStateFlow
++import kotlinx.coroutines.flow.update
++import kotlinx.coroutines.launch
++import javax.inject.Inject
++
++@HiltViewModel
++@Stable
++class AfrezzaDialogViewModel @Inject constructor(
++    private val insulinManager: InsulinManager,
++    private val persistenceLayer: PersistenceLayer,
++    private val uel: UserEntryLogger,
++    private val dateUtil: DateUtil,
++    private val rh: ResourceHelper,
++    private val aapsLogger: AAPSLogger
++) : ViewModel() {
++
++    private val _uiState = MutableStateFlow(AfrezzaDialogUiState())
++    val uiState: StateFlow<AfrezzaDialogUiState> = _uiState.asStateFlow()
++
++    sealed class SideEffect {
++        data class ShowMessage(val message: String) : SideEffect()
++        data object DoseLogged : SideEffect()
++    }
++
++    private val _sideEffect = MutableSharedFlow<SideEffect>(
++        replay = 0,
++        extraBufferCapacity = 1,
++        onBufferOverflow = BufferOverflow.DROP_OLDEST
++    )
++    val sideEffect: SharedFlow<SideEffect> = _sideEffect.asSharedFlow()
++
++    init {
++        val afrezzaIcfg = findAfrezzaIcfg()
++        _uiState.update {
++            AfrezzaDialogUiState(
++                afrezzaIcfg = afrezzaIcfg,
++                isConfigured = afrezzaIcfg != null
++            )
++        }
++    }
++
++    /**
++     * Find the Afrezza ICfg from InsulinManager's configured insulins.
++     * Matches by peak time against the OREF_INHALED_AFREZZA template.
++     */
++    private fun findAfrezzaIcfg(): ICfg? {
++        val afrezzaPeak = InsulinType.OREF_INHALED_AFREZZA.insulinPeakTime
++        return insulinManager.insulins.firstOrNull { it.insulinPeakTime == afrezzaPeak }
++            ?: insulinManager.insulins.firstOrNull {
++                // Fallback: match any insulin with DIA <= 4h (likely inhaled)
++                val template = InsulinType.fromPeak(it.insulinPeakTime)
++                template.isInhaled
++            }
++    }
++
++    fun selectCartridge(units: Int) {
++        _uiState.update { it.copy(selectedCartridge = units, showConfirmation = true) }
++    }
++
++    fun dismissConfirmation() {
++        _uiState.update { it.copy(showConfirmation = false, selectedCartridge = null) }
++    }
++
++    fun confirmAndLog() {
++        val state = _uiState.value
++        val units = state.selectedCartridge ?: return
++        val iCfg = state.afrezzaIcfg ?: return
++
++        _uiState.update { it.copy(isLogging = true) }
++
++        viewModelScope.launch {
++            try {
++                val now = dateUtil.now()
++                val bolus = BS(
++                    timestamp = now,
++                    amount = units.toDouble(),
++                    type = BS.Type.NORMAL,
++                    notes = rh.gs(R.string.afrezza_inhaled),
++                    iCfg = iCfg,
++                    ids = IDs(pumpId = now)
++                )
++
++                persistenceLayer.insertOrUpdateBolus(
++                    bolus = bolus,
++                    action = Action.BOLUS,
++                    source = Sources.InsulinDialog,
++                    note = rh.gs(R.string.afrezza_inhaled)
++                )
++
++                uel.log(
++                    Action.BOLUS,
++                    Sources.InsulinDialog,
++                    rh.gs(R.string.afrezza_inhaled),
++                    ValueWithUnit.Insulin(units.toDouble())
++                )
++
++                aapsLogger.info(LTag.UI, "Afrezza ${units}U logged with ICfg: ${iCfg.insulinLabel}")
++
++                _sideEffect.tryEmit(SideEffect.ShowMessage(rh.gs(R.string.afrezza_logged, units)))
++                _sideEffect.tryEmit(SideEffect.DoseLogged)
++            } catch (e: Exception) {
++                aapsLogger.error(LTag.UI, "Failed to log Afrezza dose", e)
++            } finally {
++                _uiState.update { it.copy(isLogging = false, showConfirmation = false, selectedCartridge = null) }
++            }
++        }
++    }
++}
+-- 
+2.43.0
+

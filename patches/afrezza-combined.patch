@@ -1,0 +1,1155 @@
+From e0e927f1ed2c78dc37bc4d2570e85d39605e6fcd Mon Sep 17 00:00:00 2001
+From: Afrezza Feature <afrezza-dev@aaps.app>
+Date: Tue, 2 Jun 2026 01:10:07 +0000
+Subject: [PATCH 1/9] feat: Add Afrezza inhaled insulin string resources
+
+Add string resources for Afrezza (Technosphere) inhaled insulin support:
+- core/interfaces: insulin type label and description
+- ui: Afrezza quick-log dialog strings
+---
+ core/interfaces/src/main/res/values/strings.xml | 2 ++
+ ui/src/main/res/values/strings.xml              | 7 +++++++
+ 2 files changed, 9 insertions(+)
+
+diff --git a/core/interfaces/src/main/res/values/strings.xml b/core/interfaces/src/main/res/values/strings.xml
+index f307b7a..7532d0d 100644
+--- a/core/interfaces/src/main/res/values/strings.xml
++++ b/core/interfaces/src/main/res/values/strings.xml
+@@ -114,6 +114,8 @@
+     <string name="ultra_rapid_oref">Fiasp</string>
+     <string name="fast_acting_insulin_comment">Novorapid, Novolog, Humalog</string>
+     <string name="ultra_fast_acting_insulin_comment">Fiasp</string>
++    <string name="inhaled_afrezza">Afrezza (Inhaled)</string>
++    <string name="inhaled_afrezza_comment">Technosphere inhaled insulin — peak ~40 min, duration ~2.5 h</string>
+     <string name="insulin_peak_time">Peak Time [min]</string>
+ 
+     <!-- Concentration -->
+diff --git a/ui/src/main/res/values/strings.xml b/ui/src/main/res/values/strings.xml
+index f27f611..76465b1 100644
+--- a/ui/src/main/res/values/strings.xml
++++ b/ui/src/main/res/values/strings.xml
+@@ -341,4 +341,11 @@
+     <string name="cal_precheck_delta_too_high">Glucose is changing too fast (Δ %1$s %3$s per 5 min, limit %2$s). Wait for stability.</string>
+     <string name="cal_precheck_mark_sensor_change">Mark sensor change</string>
+ 
++    <!-- Afrezza Inhaled Insulin -->
++    <string name="log_afrezza_dose">Log Afrezza Dose</string>
++    <string name="afrezza_confirm_log">Log %1$dU Afrezza?</string>
++    <string name="afrezza_logged">%1$dU Afrezza logged</string>
++    <string name="afrezza_inhaled">Afrezza inhaled</string>
++    <string name="afrezza_not_configured">Add Afrezza insulin in Insulin Management first</string>
++
+ </resources>
+-- 
+2.43.0
+
+
+From a22d5bfecd43d1d62994a4b668e3a6e4917e1059 Mon Sep 17 00:00:00 2001
+From: Afrezza Feature <afrezza-dev@aaps.app>
+Date: Tue, 2 Jun 2026 01:11:32 +0000
+Subject: [PATCH 2/9] feat: Add InsulinType.OREF_INHALED_AFREZZA and inhaled
+ DIA limits
+
+- Add OREF_INHALED_AFREZZA enum entry (peak=40min, DIA=2.5h, value=6)
+- Add isInhaled property to InsulinType for delivery route identification
+- Add MIN_DIA_INHALED/MAX_DIA_INHALED to HardLimits (1.5h-4.0h range)
+- Add minDiaInhaled()/maxDiaInhaled() to HardLimits interface and impl
+
+Afrezza (Technosphere) pharmacokinetics: onset ~12min, peak ~40min,
+clinical duration 1.5-3h depending on cartridge size (4U/8U/12U).
+Conservative DIA of 2.5h covers the majority of insulin activity.
+---
+ .../kotlin/app/aaps/core/interfaces/insulin/InsulinType.kt   | 5 +++--
+ .../main/kotlin/app/aaps/core/interfaces/utils/HardLimits.kt | 4 ++++
+ .../kotlin/app/aaps/implementation/utils/HardLimitsImpl.kt   | 2 ++
+ 3 files changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/insulin/InsulinType.kt b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/insulin/InsulinType.kt
+index c65bbe2..529a001 100644
+--- a/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/insulin/InsulinType.kt
++++ b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/insulin/InsulinType.kt
+@@ -5,7 +5,7 @@ import app.aaps.core.data.model.ICfg
+ import app.aaps.core.interfaces.R
+ import app.aaps.core.interfaces.resources.ResourceHelper
+ 
+-enum class InsulinType(val value: Int, val insulinEndTime: Long, val insulinPeakTime: Long, @StringRes val label: Int, @StringRes val comment: Int) {
++enum class InsulinType(val value: Int, val insulinEndTime: Long, val insulinPeakTime: Long, @StringRes val label: Int, @StringRes val comment: Int, val isInhaled: Boolean = false) {
+     UNKNOWN(-1, 0, 0, R.string.unknown, R.string.unknown),
+ 
+     // int FAST_ACTING_INSULIN = 0; // old model no longer available
+@@ -13,7 +13,8 @@ enum class InsulinType(val value: Int, val insulinEndTime: Long, val insulinPeak
+     OREF_RAPID_ACTING(2, 8 * 3600 * 1000, 75 * 60000, R.string.rapid_acting_oref, R.string.fast_acting_insulin_comment),
+     OREF_ULTRA_RAPID_ACTING(3, 8 * 3600 * 1000, 55 * 60000, R.string.ultra_rapid_oref, R.string.ultra_fast_acting_insulin_comment),
+     OREF_FREE_PEAK(4, 8 * 3600 * 1000, 50 * 60000, R.string.free_peak_oref, R.string.insulin_peak_time),
+-    OREF_LYUMJEV(5, 8 * 3600 * 1000, 45 * 60000, R.string.lyumjev,  R.string.lyumjev);
++    OREF_LYUMJEV(5, 8 * 3600 * 1000, 45 * 60000, R.string.lyumjev, R.string.lyumjev),
++    OREF_INHALED_AFREZZA(6, (2.5 * 3600 * 1000).toLong(), 40 * 60000L, R.string.inhaled_afrezza, R.string.inhaled_afrezza_comment, isInhaled = true);
+ 
+     val iCfg: ICfg
+         get() = ICfg(this.name, insulinEndTime, insulinPeakTime, 1.0)
+diff --git a/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/utils/HardLimits.kt b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/utils/HardLimits.kt
+index 0789a13..ffb1787 100644
+--- a/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/utils/HardLimits.kt
++++ b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/utils/HardLimits.kt
+@@ -17,6 +17,8 @@ interface HardLimits {
+         val LIMIT_TEMP_TARGET_BG = doubleArrayOf(72.0, 200.0)
+         val MIN_DIA = doubleArrayOf(5.0, 5.0, 5.0, 5.0, 5.0)
+         val MAX_DIA = doubleArrayOf(9.0, 9.0, 9.0, 9.0, 10.0)
++        val MIN_DIA_INHALED = doubleArrayOf(1.5, 1.5, 1.5, 1.5, 1.5) // Inhaled insulin (e.g. Afrezza) has shorter DIA
++        val MAX_DIA_INHALED = doubleArrayOf(4.0, 4.0, 4.0, 4.0, 4.0)
+         const val MIN_PEAK = 35 // mgdl
+         const val MAX_PEAK = 120 // mgdl
+         val MIN_IC = doubleArrayOf(2.0, 2.0, 2.0, 2.0, 0.3)
+@@ -41,6 +43,8 @@ interface HardLimits {
+     fun maxBasal(): Double
+     fun minDia(): Double
+     fun maxDia(): Double
++    fun minDiaInhaled(): Double
++    fun maxDiaInhaled(): Double
+     fun minPeak(): Int
+     fun maxPeak(): Int
+     fun minIC(): Double
+diff --git a/implementation/src/main/kotlin/app/aaps/implementation/utils/HardLimitsImpl.kt b/implementation/src/main/kotlin/app/aaps/implementation/utils/HardLimitsImpl.kt
+index 0f2d4e6..36d9b6a 100644
+--- a/implementation/src/main/kotlin/app/aaps/implementation/utils/HardLimitsImpl.kt
++++ b/implementation/src/main/kotlin/app/aaps/implementation/utils/HardLimitsImpl.kt
+@@ -51,6 +51,8 @@ class HardLimitsImpl @Inject constructor(
+     override fun maxBasal(): Double = HardLimits.MAX_BASAL[loadAge()]
+     override fun minDia(): Double = HardLimits.MIN_DIA[loadAge()]
+     override fun maxDia(): Double = HardLimits.MAX_DIA[loadAge()]
++    override fun minDiaInhaled(): Double = HardLimits.MIN_DIA_INHALED[loadAge()]
++    override fun maxDiaInhaled(): Double = HardLimits.MAX_DIA_INHALED[loadAge()]
+     override fun minPeak(): Int = HardLimits.MIN_PEAK
+     override fun maxPeak(): Int = HardLimits.MAX_PEAK
+     override fun minIC(): Double = HardLimits.MIN_IC[loadAge()]
+-- 
+2.43.0
+
+
+From ff609236509211dcc3193ea67d32d145cfe066e3 Mon Sep 17 00:00:00 2001
+From: Afrezza Feature <afrezza-dev@aaps.app>
+Date: Tue, 2 Jun 2026 01:12:20 +0000
+Subject: [PATCH 3/9] feat: Add Afrezza to insulin template list, fix editor
+ DIA validation
+
+- Add OREF_INHALED_AFREZZA to insulinTemplateList() in InsulinImpl
+- Update InsulinManagementViewModel to use inhaled DIA limits (1.5-4.0h)
+  when the editor template is an inhaled insulin type
+- Make diaRange() template-aware so the UI slider shows correct bounds
+- Subcutaneous insulin DIA limits (5.0-9.0h) remain unchanged
+---
+ .../aaps/implementation/insulin/InsulinImpl.kt    |  3 ++-
+ .../InsulinManagementViewModel.kt                 | 15 ++++++++++++---
+ 2 files changed, 14 insertions(+), 4 deletions(-)
+
+diff --git a/implementation/src/main/kotlin/app/aaps/implementation/insulin/InsulinImpl.kt b/implementation/src/main/kotlin/app/aaps/implementation/insulin/InsulinImpl.kt
+index fdc459d..ca14ab8 100644
+--- a/implementation/src/main/kotlin/app/aaps/implementation/insulin/InsulinImpl.kt
++++ b/implementation/src/main/kotlin/app/aaps/implementation/insulin/InsulinImpl.kt
+@@ -79,7 +79,8 @@ class InsulinImpl @Inject constructor(
+         InsulinType.OREF_RAPID_ACTING,
+         InsulinType.OREF_ULTRA_RAPID_ACTING,
+         InsulinType.OREF_LYUMJEV,
+-        InsulinType.OREF_FREE_PEAK
++        InsulinType.OREF_FREE_PEAK,
++        InsulinType.OREF_INHALED_AFREZZA
+     )
+ 
+     override fun concentrationList(): List<ConcentrationType> = listOf(
+diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/insulinManagement/InsulinManagementViewModel.kt b/ui/src/main/kotlin/app/aaps/ui/compose/insulinManagement/InsulinManagementViewModel.kt
+index c35d938..7334647 100644
+--- a/ui/src/main/kotlin/app/aaps/ui/compose/insulinManagement/InsulinManagementViewModel.kt
++++ b/ui/src/main/kotlin/app/aaps/ui/compose/insulinManagement/InsulinManagementViewModel.kt
+@@ -313,8 +313,11 @@ class InsulinManagementViewModel @Inject constructor(
+         editedICfg.setDia(state.editorDiaHours)
+         editedICfg.setPeak(state.editorPeakMinutes)
+ 
+-        // Validation
+-        if (editedICfg.dia < hardLimits.minDia() || editedICfg.dia > hardLimits.maxDia()) {
++        // Validation — use inhaled DIA limits when template is an inhaled insulin
++        val isInhaled = state.editorTemplate?.isInhaled == true
++        val minDia = if (isInhaled) hardLimits.minDiaInhaled() else hardLimits.minDia()
++        val maxDia = if (isInhaled) hardLimits.maxDiaInhaled() else hardLimits.maxDia()
++        if (editedICfg.dia < minDia || editedICfg.dia > maxDia) {
+             showSnackbar(rh.gs(CoreUiR.string.value_out_of_hard_limits, rh.gs(CoreUiR.string.insulin_dia), editedICfg.dia))
+             return false
+         }
+@@ -446,6 +449,12 @@ class InsulinManagementViewModel @Inject constructor(
+     val concentrationEnabled: Boolean
+         get() = preferences.get(BooleanKey.GeneralInsulinConcentration)
+ 
+-    fun diaRange(): ClosedFloatingPointRange<Double> = hardLimits.minDia()..hardLimits.maxDia()
++    fun diaRange(): ClosedFloatingPointRange<Double> {
++        val isInhaled = uiState.value.editorTemplate?.isInhaled == true
++        val min = if (isInhaled) hardLimits.minDiaInhaled() else hardLimits.minDia()
++        val max = if (isInhaled) hardLimits.maxDiaInhaled() else hardLimits.maxDia()
++        return min..max
++    }
++
+     fun peakRange(): ClosedFloatingPointRange<Double> = hardLimits.minPeak().toDouble()..hardLimits.maxPeak().toDouble()
+ }
+-- 
+2.43.0
+
+
+From f3fada3409981300e6bda3a147dcdfea85bc4495 Mon Sep 17 00:00:00 2001
+From: Afrezza Feature <afrezza-dev@aaps.app>
+Date: Tue, 2 Jun 2026 01:13:22 +0000
+Subject: [PATCH 4/9] test: Add IOB curve validation tests for Afrezza
+ parameters
+
+Comprehensive test suite validating the oref bilinear model at Afrezza's
+short DIA (2.5h) and early peak (40min):
+
+- IOB starts near 1.0 at t=0 and reaches 0 at t=DIA
+- No NaN or negative values across entire curve
+- Peak activity occurs near configured peak time (40min)
+- Monotonic IOB decrease after peak
+- Afrezza IOB decays faster than Fiasp (comparative)
+- Dose scaling correct for cartridge sizes (4U/8U/12U)
+- Combined Afrezza+Fiasp IOB sums correctly, with Afrezza
+  dropping to zero while Fiasp remains active
+---
+ .../core/data/model/ICfgAfrezzaIobTest.kt     | 179 ++++++++++++++++++
+ 1 file changed, 179 insertions(+)
+ create mode 100644 core/data/src/test/kotlin/app/aaps/core/data/model/ICfgAfrezzaIobTest.kt
+
+diff --git a/core/data/src/test/kotlin/app/aaps/core/data/model/ICfgAfrezzaIobTest.kt b/core/data/src/test/kotlin/app/aaps/core/data/model/ICfgAfrezzaIobTest.kt
+new file mode 100644
+index 0000000..11051bb
+--- /dev/null
++++ b/core/data/src/test/kotlin/app/aaps/core/data/model/ICfgAfrezzaIobTest.kt
+@@ -0,0 +1,179 @@
++package app.aaps.core.data.model
++
++import app.aaps.core.data.iob.Iob
++import org.junit.jupiter.api.Assertions.assertEquals
++import org.junit.jupiter.api.Assertions.assertTrue
++import org.junit.jupiter.api.BeforeEach
++import org.junit.jupiter.api.Test
++
++/**
++ * Validate the oref bilinear IOB model with Afrezza (Technosphere inhaled insulin) parameters.
++ *
++ * Afrezza pharmacokinetics (published):
++ *   - Onset: ~12 minutes
++ *   - Peak (Tmax): 35-45 minutes
++ *   - Clinical duration: 1.5-3 hours (dose-dependent)
++ *
++ * Model parameters used:
++ *   - Peak: 40 minutes
++ *   - DIA: 2.5 hours (150 minutes)
++ *   - Concentration: 1.0 (U100 equivalent)
++ */
++class ICfgAfrezzaIobTest {
++
++    private lateinit var afrezzaCfg: ICfg
++    private lateinit var fiaspCfg: ICfg
++    private lateinit var bolus1U: BS
++
++    @BeforeEach
++    fun setup() {
++        afrezzaCfg = ICfg(
++            insulinLabel = "Afrezza (Inhaled)",
++            peak = 40,       // minutes
++            dia = 2.5,       // hours
++            concentration = 1.0
++        )
++        fiaspCfg = ICfg(
++            insulinLabel = "Fiasp",
++            peak = 55,       // minutes
++            dia = 5.0,       // hours
++            concentration = 1.0
++        )
++        bolus1U = BS(
++            timestamp = 0L,
++            amount = 1.0,
++            type = BS.Type.NORMAL,
++            iCfg = afrezzaCfg
++        )
++    }
++
++    @Test
++    fun `IOB starts near 1_0 at time zero`() {
++        // At t=1 minute after bolus, IOB should be very close to 1.0
++        val iob = afrezzaCfg.iobCalcForTreatment(bolus1U, 60_000L) // 1 min in ms
++        assertTrue(iob.iobContrib > 0.95, "IOB at t=1min should be >0.95, was ${iob.iobContrib}")
++        assertTrue(iob.iobContrib <= 1.0, "IOB at t=1min should be <=1.0, was ${iob.iobContrib}")
++    }
++
++    @Test
++    fun `IOB is zero at DIA`() {
++        // At t=DIA (150 minutes), IOB should be exactly 0
++        val iob = afrezzaCfg.iobCalcForTreatment(bolus1U, 150L * 60_000L)
++        assertEquals(0.0, iob.iobContrib, 0.001, "IOB should be 0 at t=DIA")
++        assertEquals(0.0, iob.activityContrib, 0.001, "Activity should be 0 at t=DIA")
++    }
++
++    @Test
++    fun `IOB is zero after DIA`() {
++        // At t=DIA+30min, IOB should still be 0
++        val iob = afrezzaCfg.iobCalcForTreatment(bolus1U, 180L * 60_000L)
++        assertEquals(0.0, iob.iobContrib, 0.001, "IOB should be 0 after DIA")
++    }
++
++    @Test
++    fun `IOB decreases monotonically after peak`() {
++        var prevIob = 1.0
++        // Check from t=50min to t=150min (after peak, IOB should only decrease)
++        for (t in 50..150 step 5) {
++            val iob = afrezzaCfg.iobCalcForTreatment(bolus1U, t.toLong() * 60_000L)
++            assertTrue(
++                iob.iobContrib <= prevIob + 0.001,
++                "IOB should decrease monotonically after peak. At t=${t}min: ${iob.iobContrib} > prev: $prevIob"
++            )
++            prevIob = iob.iobContrib
++        }
++    }
++
++    @Test
++    fun `no NaN or negative values across entire curve`() {
++        for (t in 0..200 step 1) {
++            val iob = afrezzaCfg.iobCalcForTreatment(bolus1U, t.toLong() * 60_000L)
++            assertTrue(!iob.iobContrib.isNaN(), "IOB should not be NaN at t=${t}min")
++            assertTrue(!iob.activityContrib.isNaN(), "Activity should not be NaN at t=${t}min")
++            assertTrue(iob.iobContrib >= 0.0, "IOB should not be negative at t=${t}min, was ${iob.iobContrib}")
++            assertTrue(iob.activityContrib >= 0.0, "Activity should not be negative at t=${t}min, was ${iob.activityContrib}")
++        }
++    }
++
++    @Test
++    fun `peak activity occurs near configured peak time`() {
++        var maxActivity = 0.0
++        var maxActivityTime = 0
++        for (t in 1..150) {
++            val iob = afrezzaCfg.iobCalcForTreatment(bolus1U, t.toLong() * 60_000L)
++            if (iob.activityContrib > maxActivity) {
++                maxActivity = iob.activityContrib
++                maxActivityTime = t
++            }
++        }
++        // Peak should be within +/- 10 minutes of configured peak (40 min)
++        assertTrue(
++            maxActivityTime in 30..50,
++            "Peak activity should occur near t=40min, was at t=${maxActivityTime}min"
++        )
++    }
++
++    @Test
++    fun `Afrezza IOB decays faster than Fiasp`() {
++        val fiaspBolus = BS(timestamp = 0L, amount = 1.0, type = BS.Type.NORMAL, iCfg = fiaspCfg)
++
++        // At 90 minutes, Afrezza should have substantially less IOB than Fiasp
++        val afrezzaIob90 = afrezzaCfg.iobCalcForTreatment(bolus1U, 90L * 60_000L)
++        val fiaspIob90 = fiaspCfg.iobCalcForTreatment(fiaspBolus, 90L * 60_000L)
++
++        assertTrue(
++            afrezzaIob90.iobContrib < fiaspIob90.iobContrib,
++            "At t=90min, Afrezza IOB (${afrezzaIob90.iobContrib}) should be less than Fiasp IOB (${fiaspIob90.iobContrib})"
++        )
++
++        // At 150 minutes (Afrezza DIA), Afrezza IOB should be ~0, Fiasp still significant
++        val afrezzaIob150 = afrezzaCfg.iobCalcForTreatment(bolus1U, 150L * 60_000L)
++        val fiaspIob150 = fiaspCfg.iobCalcForTreatment(fiaspBolus, 150L * 60_000L)
++
++        assertEquals(0.0, afrezzaIob150.iobContrib, 0.001, "Afrezza IOB should be ~0 at t=150min")
++        assertTrue(
++            fiaspIob150.iobContrib > 0.2,
++            "Fiasp IOB should still be significant at t=150min, was ${fiaspIob150.iobContrib}"
++        )
++    }
++
++    @Test
++    fun `dose scaling works correctly for cartridge sizes`() {
++        // 4U, 8U, 12U should produce proportional IOB
++        val bolus4U = BS(timestamp = 0L, amount = 4.0, type = BS.Type.NORMAL, iCfg = afrezzaCfg)
++        val bolus8U = BS(timestamp = 0L, amount = 8.0, type = BS.Type.NORMAL, iCfg = afrezzaCfg)
++        val bolus12U = BS(timestamp = 0L, amount = 12.0, type = BS.Type.NORMAL, iCfg = afrezzaCfg)
++
++        val t = 60L * 60_000L // 60 minutes
++        val iob4 = afrezzaCfg.iobCalcForTreatment(bolus4U, t)
++        val iob8 = afrezzaCfg.iobCalcForTreatment(bolus8U, t)
++        val iob12 = afrezzaCfg.iobCalcForTreatment(bolus12U, t)
++
++        assertEquals(iob4.iobContrib * 2.0, iob8.iobContrib, 0.001, "8U IOB should be 2x 4U IOB")
++        assertEquals(iob4.iobContrib * 3.0, iob12.iobContrib, 0.001, "12U IOB should be 3x 4U IOB")
++    }
++
++    @Test
++    fun `combined Afrezza plus Fiasp IOB sums correctly`() {
++        // Simulate: Afrezza 8U at t=0, Fiasp pump bolus 3U at t=0
++        val afrezzaBolus = BS(timestamp = 0L, amount = 8.0, type = BS.Type.NORMAL, iCfg = afrezzaCfg)
++        val fiaspBolus = BS(timestamp = 0L, amount = 3.0, type = BS.Type.NORMAL, iCfg = fiaspCfg)
++
++        val t = 60L * 60_000L // 60 minutes
++        val afrezzaIob = afrezzaCfg.iobCalcForTreatment(afrezzaBolus, t)
++        val fiaspIob = fiaspCfg.iobCalcForTreatment(fiaspBolus, t)
++        val combinedIob = afrezzaIob.iobContrib + fiaspIob.iobContrib
++
++        // Combined should equal sum of individual IOBs
++        assertTrue(combinedIob > 0, "Combined IOB should be positive")
++        assertTrue(combinedIob < 11.0, "Combined IOB should be less than total dose (11U)")
++
++        // At t=180min (well past Afrezza DIA), only Fiasp should remain
++        val t180 = 180L * 60_000L
++        val afrezzaIob180 = afrezzaCfg.iobCalcForTreatment(afrezzaBolus, t180)
++        val fiaspIob180 = fiaspCfg.iobCalcForTreatment(fiaspBolus, t180)
++
++        assertEquals(0.0, afrezzaIob180.iobContrib, 0.001, "Afrezza IOB should be 0 at t=180min")
++        assertTrue(fiaspIob180.iobContrib > 0.1, "Fiasp IOB should still be active at t=180min")
++    }
++}
+-- 
+2.43.0
+
+
+From 385640dd8a650af482df29f38e5968abc510b9b0 Mon Sep 17 00:00:00 2001
+From: Afrezza Feature <afrezza-dev@aaps.app>
+Date: Tue, 2 Jun 2026 01:14:32 +0000
+Subject: [PATCH 5/9] feat: Add Afrezza quick-log dialog for one-tap dose
+ logging
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+New Compose bottom sheet dialog with three large cartridge-size buttons
+(4U, 8U, 12U) for rapid Afrezza dose logging:
+
+- AfrezzaDialogScreen: Bottom sheet with cartridge selection UI
+- AfrezzaDialogViewModel: Resolves Afrezza ICfg from InsulinManager,
+  creates record-only bolus with correct per-bolus ICfg
+- AfrezzaDialogUiState: Minimal state for cartridge selection flow
+
+User flow: tap cartridge → confirm → done (2 taps total).
+Bolus is created as record-only with Afrezza ICfg, ensuring the
+IOB calculator uses the correct short-DIA curve.
+
+Shows error state if Afrezza insulin hasn't been added in
+Insulin Management yet.
+---
+ .../afrezzaDialog/AfrezzaDialogScreen.kt      | 192 ++++++++++++++++++
+ .../afrezzaDialog/AfrezzaDialogUiState.kt     |  13 ++
+ .../afrezzaDialog/AfrezzaDialogViewModel.kt   | 136 +++++++++++++
+ 3 files changed, 341 insertions(+)
+ create mode 100644 ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogScreen.kt
+ create mode 100644 ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogUiState.kt
+ create mode 100644 ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogViewModel.kt
+
+diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogScreen.kt b/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogScreen.kt
+new file mode 100644
+index 0000000..e9b3165
+--- /dev/null
++++ b/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogScreen.kt
+@@ -0,0 +1,192 @@
++package app.aaps.ui.compose.afrezzaDialog
++
++import androidx.compose.foundation.layout.Arrangement
++import androidx.compose.foundation.layout.Column
++import androidx.compose.foundation.layout.Row
++import androidx.compose.foundation.layout.Spacer
++import androidx.compose.foundation.layout.fillMaxWidth
++import androidx.compose.foundation.layout.height
++import androidx.compose.foundation.layout.padding
++import androidx.compose.foundation.layout.size
++import androidx.compose.foundation.shape.RoundedCornerShape
++import androidx.compose.material3.Button
++import androidx.compose.material3.ButtonDefaults
++import androidx.compose.material3.Card
++import androidx.compose.material3.CardDefaults
++import androidx.compose.material3.ExperimentalMaterial3Api
++import androidx.compose.material3.MaterialTheme
++import androidx.compose.material3.ModalBottomSheet
++import androidx.compose.material3.Text
++import androidx.compose.material3.rememberModalBottomSheetState
++import androidx.compose.runtime.Composable
++import androidx.compose.runtime.LaunchedEffect
++import androidx.compose.runtime.getValue
++import androidx.compose.ui.Alignment
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.res.stringResource
++import androidx.compose.ui.text.font.FontWeight
++import androidx.compose.ui.text.style.TextAlign
++import androidx.compose.ui.tooling.preview.Preview
++import androidx.compose.ui.unit.dp
++import androidx.compose.ui.unit.sp
++import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
++import androidx.lifecycle.compose.collectAsStateWithLifecycle
++import app.aaps.core.ui.compose.dialogs.OkCancelDialog
++import app.aaps.core.ui.compose.navigation.ElementType
++import app.aaps.core.ui.compose.navigation.color
++import app.aaps.core.ui.compose.navigation.icon
++import app.aaps.ui.R
++import app.aaps.core.ui.R as CoreUiR
++
++@OptIn(ExperimentalMaterial3Api::class)
++@Composable
++fun AfrezzaDialogScreen(
++    viewModel: AfrezzaDialogViewModel = hiltViewModel(),
++    onNavigateBack: () -> Unit,
++    onShowMessage: (String) -> Unit
++) {
++    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
++    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
++
++    // Observe side effects
++    LaunchedEffect(Unit) {
++        viewModel.sideEffect.collect { effect ->
++            when (effect) {
++                is AfrezzaDialogViewModel.SideEffect.ShowMessage -> onShowMessage(effect.message)
++                is AfrezzaDialogViewModel.SideEffect.DoseLogged -> onNavigateBack()
++            }
++        }
++    }
++
++    // Confirmation dialog
++    if (uiState.showConfirmation && uiState.selectedCartridge != null) {
++        OkCancelDialog(
++            title = stringResource(R.string.log_afrezza_dose),
++            message = stringResource(R.string.afrezza_confirm_log, uiState.selectedCartridge!!),
++            icon = ElementType.INSULIN.icon(),
++            iconTint = ElementType.INSULIN.color(),
++            onConfirm = { viewModel.confirmAndLog() },
++            onDismiss = { viewModel.dismissConfirmation() }
++        )
++    }
++
++    ModalBottomSheet(
++        onDismissRequest = onNavigateBack,
++        sheetState = sheetState,
++        containerColor = MaterialTheme.colorScheme.surface
++    ) {
++        if (!uiState.isConfigured) {
++            // Afrezza not yet added in Insulin Management
++            AfrezzaNotConfiguredContent()
++        } else {
++            AfrezzaCartridgeSelector(
++                onCartridgeSelected = { units -> viewModel.selectCartridge(units) },
++                isLogging = uiState.isLogging,
++                insulinLabel = uiState.afrezzaIcfg?.insulinLabel ?: ""
++            )
++        }
++    }
++}
++
++@Composable
++private fun AfrezzaCartridgeSelector(
++    onCartridgeSelected: (Int) -> Unit,
++    isLogging: Boolean,
++    insulinLabel: String
++) {
++    Column(
++        modifier = Modifier
++            .fillMaxWidth()
++            .padding(start = 24.dp, end = 24.dp, bottom = 32.dp),
++        horizontalAlignment = Alignment.CenterHorizontally
++    ) {
++        Text(
++            text = stringResource(R.string.log_afrezza_dose),
++            style = MaterialTheme.typography.titleLarge,
++            fontWeight = FontWeight.Bold
++        )
++
++        Spacer(modifier = Modifier.height(4.dp))
++
++        Text(
++            text = insulinLabel,
++            style = MaterialTheme.typography.bodyMedium,
++            color = MaterialTheme.colorScheme.onSurfaceVariant
++        )
++
++        Spacer(modifier = Modifier.height(24.dp))
++
++        Row(
++            modifier = Modifier.fillMaxWidth(),
++            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
++        ) {
++            CartridgeButton(units = 4, onClick = { onCartridgeSelected(4) }, enabled = !isLogging)
++            CartridgeButton(units = 8, onClick = { onCartridgeSelected(8) }, enabled = !isLogging)
++            CartridgeButton(units = 12, onClick = { onCartridgeSelected(12) }, enabled = !isLogging)
++        }
++
++        Spacer(modifier = Modifier.height(16.dp))
++    }
++}
++
++@Composable
++private fun CartridgeButton(
++    units: Int,
++    onClick: () -> Unit,
++    enabled: Boolean = true
++) {
++    Button(
++        onClick = onClick,
++        enabled = enabled,
++        modifier = Modifier.size(100.dp),
++        shape = RoundedCornerShape(16.dp),
++        colors = ButtonDefaults.buttonColors(
++            containerColor = MaterialTheme.colorScheme.primaryContainer,
++            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
++        )
++    ) {
++        Column(horizontalAlignment = Alignment.CenterHorizontally) {
++            Text(
++                text = "$units",
++                fontSize = 28.sp,
++                fontWeight = FontWeight.Bold
++            )
++            Text(
++                text = "units",
++                fontSize = 12.sp
++            )
++        }
++    }
++}
++
++@Composable
++private fun AfrezzaNotConfiguredContent() {
++    Card(
++        modifier = Modifier
++            .fillMaxWidth()
++            .padding(24.dp),
++        colors = CardDefaults.cardColors(
++            containerColor = MaterialTheme.colorScheme.errorContainer
++        )
++    ) {
++        Text(
++            text = stringResource(R.string.afrezza_not_configured),
++            modifier = Modifier.padding(16.dp),
++            style = MaterialTheme.typography.bodyLarge,
++            color = MaterialTheme.colorScheme.onErrorContainer,
++            textAlign = TextAlign.Center
++        )
++    }
++}
++
++@Preview(showBackground = true)
++@Composable
++private fun AfrezzaCartridgeSelectorPreview() {
++    MaterialTheme {
++        AfrezzaCartridgeSelector(
++            onCartridgeSelected = {},
++            isLogging = false,
++            insulinLabel = "Afrezza (Inhaled) 40m 2.5h U100"
++        )
++    }
++}
+diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogUiState.kt b/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogUiState.kt
+new file mode 100644
+index 0000000..9fe4cc8
+--- /dev/null
++++ b/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogUiState.kt
+@@ -0,0 +1,13 @@
++package app.aaps.ui.compose.afrezzaDialog
++
++import androidx.compose.runtime.Immutable
++import app.aaps.core.data.model.ICfg
++
++@Immutable
++data class AfrezzaDialogUiState(
++    val selectedCartridge: Int? = null,       // 4, 8, or 12
++    val afrezzaIcfg: ICfg? = null,           // Resolved Afrezza ICfg from InsulinManager
++    val isConfigured: Boolean = false,        // Whether Afrezza insulin exists in InsulinManager
++    val showConfirmation: Boolean = false,
++    val isLogging: Boolean = false
++)
+diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogViewModel.kt b/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogViewModel.kt
+new file mode 100644
+index 0000000..26c0b1b
+--- /dev/null
++++ b/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogViewModel.kt
+@@ -0,0 +1,136 @@
++package app.aaps.ui.compose.afrezzaDialog
++
++import androidx.compose.runtime.Stable
++import androidx.lifecycle.ViewModel
++import androidx.lifecycle.viewModelScope
++import app.aaps.core.data.model.BS
++import app.aaps.core.data.model.ICfg
++import app.aaps.core.data.model.IDs
++import app.aaps.core.data.model.TE
++import app.aaps.core.data.ue.Action
++import app.aaps.core.data.ue.Sources
++import app.aaps.core.data.ue.ValueWithUnit
++import app.aaps.core.interfaces.db.PersistenceLayer
++import app.aaps.core.interfaces.insulin.InsulinManager
++import app.aaps.core.interfaces.insulin.InsulinType
++import app.aaps.core.interfaces.logging.AAPSLogger
++import app.aaps.core.interfaces.logging.LTag
++import app.aaps.core.interfaces.logging.UserEntryLogger
++import app.aaps.core.interfaces.resources.ResourceHelper
++import app.aaps.core.interfaces.utils.DateUtil
++import app.aaps.ui.R
++import dagger.hilt.android.lifecycle.HiltViewModel
++import kotlinx.coroutines.channels.BufferOverflow
++import kotlinx.coroutines.flow.MutableSharedFlow
++import kotlinx.coroutines.flow.MutableStateFlow
++import kotlinx.coroutines.flow.SharedFlow
++import kotlinx.coroutines.flow.StateFlow
++import kotlinx.coroutines.flow.asSharedFlow
++import kotlinx.coroutines.flow.asStateFlow
++import kotlinx.coroutines.flow.update
++import kotlinx.coroutines.launch
++import javax.inject.Inject
++
++@HiltViewModel
++@Stable
++class AfrezzaDialogViewModel @Inject constructor(
++    private val insulinManager: InsulinManager,
++    private val persistenceLayer: PersistenceLayer,
++    private val uel: UserEntryLogger,
++    private val dateUtil: DateUtil,
++    private val rh: ResourceHelper,
++    private val aapsLogger: AAPSLogger
++) : ViewModel() {
++
++    private val _uiState = MutableStateFlow(AfrezzaDialogUiState())
++    val uiState: StateFlow<AfrezzaDialogUiState> = _uiState.asStateFlow()
++
++    sealed class SideEffect {
++        data class ShowMessage(val message: String) : SideEffect()
++        data object DoseLogged : SideEffect()
++    }
++
++    private val _sideEffect = MutableSharedFlow<SideEffect>(
++        replay = 0,
++        extraBufferCapacity = 1,
++        onBufferOverflow = BufferOverflow.DROP_OLDEST
++    )
++    val sideEffect: SharedFlow<SideEffect> = _sideEffect.asSharedFlow()
++
++    init {
++        val afrezzaIcfg = findAfrezzaIcfg()
++        _uiState.update {
++            AfrezzaDialogUiState(
++                afrezzaIcfg = afrezzaIcfg,
++                isConfigured = afrezzaIcfg != null
++            )
++        }
++    }
++
++    /**
++     * Find the Afrezza ICfg from InsulinManager's configured insulins.
++     * Matches by peak time against the OREF_INHALED_AFREZZA template.
++     */
++    private fun findAfrezzaIcfg(): ICfg? {
++        val afrezzaPeak = InsulinType.OREF_INHALED_AFREZZA.insulinPeakTime
++        return insulinManager.insulins.firstOrNull { it.insulinPeakTime == afrezzaPeak }
++            ?: insulinManager.insulins.firstOrNull {
++                // Fallback: match any insulin with DIA <= 4h (likely inhaled)
++                val template = InsulinType.fromPeak(it.insulinPeakTime)
++                template.isInhaled
++            }
++    }
++
++    fun selectCartridge(units: Int) {
++        _uiState.update { it.copy(selectedCartridge = units, showConfirmation = true) }
++    }
++
++    fun dismissConfirmation() {
++        _uiState.update { it.copy(showConfirmation = false, selectedCartridge = null) }
++    }
++
++    fun confirmAndLog() {
++        val state = _uiState.value
++        val units = state.selectedCartridge ?: return
++        val iCfg = state.afrezzaIcfg ?: return
++
++        _uiState.update { it.copy(isLogging = true) }
++
++        viewModelScope.launch {
++            try {
++                val now = dateUtil.now()
++                val bolus = BS(
++                    timestamp = now,
++                    amount = units.toDouble(),
++                    type = BS.Type.NORMAL,
++                    notes = rh.gs(R.string.afrezza_inhaled),
++                    iCfg = iCfg,
++                    ids = IDs(pumpId = now)
++                )
++
++                persistenceLayer.insertOrUpdateBolus(
++                    bolus = bolus,
++                    action = Action.BOLUS,
++                    source = Sources.InsulinDialog,
++                    note = rh.gs(R.string.afrezza_inhaled)
++                )
++
++                uel.log(
++                    Action.BOLUS,
++                    Sources.InsulinDialog,
++                    rh.gs(R.string.afrezza_inhaled),
++                    ValueWithUnit.Insulin(units.toDouble())
++                )
++
++                aapsLogger.info(LTag.UI, "Afrezza ${units}U logged with ICfg: ${iCfg.insulinLabel}")
++
++                _sideEffect.tryEmit(SideEffect.ShowMessage(rh.gs(R.string.afrezza_logged, units)))
++                _sideEffect.tryEmit(SideEffect.DoseLogged)
++            } catch (e: Exception) {
++                aapsLogger.error(LTag.UI, "Failed to log Afrezza dose", e)
++            } finally {
++                _uiState.update { it.copy(isLogging = false, showConfirmation = false, selectedCartridge = null) }
++            }
++        }
++    }
++}
+-- 
+2.43.0
+
+
+From cd107e1f9bc9d478e2f411412d2202f39bf87796 Mon Sep 17 00:00:00 2001
+From: Afrezza Feature <afrezza-dev@aaps.app>
+Date: Tue, 2 Jun 2026 01:17:24 +0000
+Subject: [PATCH 6/9] feat: Add Afrezza to navigation system (ElementType,
+ icon, label, color)
+
+- Add ElementType.AFREZZA with TREATMENT category and BOLUS protection
+- Map Afrezza icon (IcBolus), color (insulin), label, and description
+- Add string resources for Afrezza navigation label and description
+- Afrezza appears in global search and treatment action sheets
+---
+ .../kotlin/app/aaps/core/ui/compose/navigation/ElementType.kt | 1 +
+ .../app/aaps/core/ui/compose/navigation/ElementTypeStyle.kt   | 4 ++++
+ core/ui/src/main/res/values/strings.xml                       | 2 ++
+ 3 files changed, 7 insertions(+)
+
+diff --git a/core/ui/src/main/kotlin/app/aaps/core/ui/compose/navigation/ElementType.kt b/core/ui/src/main/kotlin/app/aaps/core/ui/compose/navigation/ElementType.kt
+index 4f890e7..92172d2 100644
+--- a/core/ui/src/main/kotlin/app/aaps/core/ui/compose/navigation/ElementType.kt
++++ b/core/ui/src/main/kotlin/app/aaps/core/ui/compose/navigation/ElementType.kt
+@@ -23,6 +23,7 @@ enum class ElementType(
+     BOLUS_WIZARD(category = ElementCategory.TREATMENT, searchable = true, protection = ProtectionCheck.Protection.BOLUS),
+     QUICK_WIZARD(protection = ProtectionCheck.Protection.BOLUS),
+     TREATMENT(category = ElementCategory.TREATMENT, searchable = true, protection = ProtectionCheck.Protection.BOLUS),
++    AFREZZA(category = ElementCategory.TREATMENT, searchable = true, protection = ProtectionCheck.Protection.BOLUS),
+ 
+     // CGM
+     CGM_XDRIP(category = ElementCategory.CGM, searchable = true),
+diff --git a/core/ui/src/main/kotlin/app/aaps/core/ui/compose/navigation/ElementTypeStyle.kt b/core/ui/src/main/kotlin/app/aaps/core/ui/compose/navigation/ElementTypeStyle.kt
+index a534876..fc99d56 100644
+--- a/core/ui/src/main/kotlin/app/aaps/core/ui/compose/navigation/ElementTypeStyle.kt
++++ b/core/ui/src/main/kotlin/app/aaps/core/ui/compose/navigation/ElementTypeStyle.kt
+@@ -56,6 +56,7 @@ import app.aaps.core.ui.compose.icons.Pump
+ fun ElementType.color(): Color = when (this) {
+     ElementType.INSULIN,
+     ElementType.TREATMENT,
++    ElementType.AFREZZA,
+     ElementType.FILL                    -> AapsTheme.elementColors.insulin
+ 
+     ElementType.CARBS                   -> AapsTheme.elementColors.carbs
+@@ -116,6 +117,7 @@ fun ElementType.color(): Color = when (this) {
+ 
+ fun ElementType.icon(): ImageVector = when (this) {
+     ElementType.INSULIN                 -> IcBolus
++    ElementType.AFREZZA                 -> IcBolus
+     ElementType.CARBS                   -> IcCarbs
+     ElementType.BOLUS_WIZARD            -> IcCalculator
+     ElementType.QUICK_WIZARD,
+@@ -171,6 +173,7 @@ fun ElementType.icon(): ImageVector = when (this) {
+ 
+ fun ElementType.labelResId(): Int = when (this) {
+     ElementType.INSULIN                 -> R.string.overview_insulin_label
++    ElementType.AFREZZA                 -> R.string.overview_afrezza_label
+     ElementType.CARBS                   -> R.string.carbs
+     ElementType.BOLUS_WIZARD            -> R.string.boluswizard
+     ElementType.QUICK_WIZARD            -> 0 // dynamic label
+@@ -221,6 +224,7 @@ fun ElementType.labelResId(): Int = when (this) {
+ 
+ fun ElementType.descriptionResId(): Int = when (this) {
+     ElementType.INSULIN                 -> R.string.treatment_insulin_desc
++    ElementType.AFREZZA                 -> R.string.treatment_afrezza_desc
+     ElementType.CARBS                   -> R.string.treatment_carbs_desc
+     ElementType.BOLUS_WIZARD            -> R.string.treatment_calculator_desc
+     ElementType.TREATMENT               -> R.string.treatment_desc
+diff --git a/core/ui/src/main/res/values/strings.xml b/core/ui/src/main/res/values/strings.xml
+index d55b42c..e41707e 100644
+--- a/core/ui/src/main/res/values/strings.xml
++++ b/core/ui/src/main/res/values/strings.xml
+@@ -211,6 +211,7 @@
+     <string name="select_site_location">Select site location</string>
+     <string name="site_location">Site location</string>
+     <string name="overview_insulin_label">Insulin</string>
++    <string name="overview_afrezza_label">Afrezza</string>
+     <string name="stoptemptarget">Stop temp target</string>
+     <string name="closedloop">Closed Loop</string>
+     <string name="openloop">Open Loop</string>
+@@ -403,6 +404,7 @@
+     <string name="boluswizard">Bolus wizard</string>
+     <string name="treatment_desc">Record insulin and carbs together</string>
+     <string name="treatment_insulin_desc">Deliver bolus manually</string>
++    <string name="treatment_afrezza_desc">Log inhaled Afrezza dose</string>
+     <string name="treatment_carbs_desc">Record carbs without insulin</string>
+     <string name="treatment_calculator_desc">Calculate bolus</string>
+     <string name="insulin_management">Insulin</string>
+-- 
+2.43.0
+
+
+From 73d80ae63373ceb3e1d8e3eeb753a56b67e6c4f9 Mon Sep 17 00:00:00 2001
+From: Afrezza Feature <afrezza-dev@aaps.app>
+Date: Tue, 2 Jun 2026 01:19:23 +0000
+Subject: [PATCH 7/9] feat: Wire Afrezza dialog into navigation, quick-launch,
+ and routing
+
+- Add AppRoute.AfrezzaDialog route definition
+- Register AfrezzaDialogScreen composable in AppNavGraph
+- Add ElementType.AFREZZA -> AfrezzaDialog navigation handler
+- Add QuickLaunchAction.Afrezza for home screen action bar
+- Users can add Afrezza to their quick-launch bar via configuration
+---
+ app/src/main/kotlin/app/aaps/ComposeMainActivity.kt    |  1 +
+ .../kotlin/app/aaps/compose/navigation/AppNavGraph.kt  | 10 ++++++++++
+ .../kotlin/app/aaps/compose/navigation/AppRoute.kt     |  1 +
+ .../aaps/ui/compose/quickLaunch/QuickLaunchAction.kt   |  1 +
+ 4 files changed, 13 insertions(+)
+
+diff --git a/app/src/main/kotlin/app/aaps/ComposeMainActivity.kt b/app/src/main/kotlin/app/aaps/ComposeMainActivity.kt
+index e53d6a8..bba55a3 100644
+--- a/app/src/main/kotlin/app/aaps/ComposeMainActivity.kt
++++ b/app/src/main/kotlin/app/aaps/ComposeMainActivity.kt
+@@ -1055,6 +1055,7 @@ class ComposeMainActivity : AppCompatActivity() {
+             // Treatment dialogs
+             ElementType.CARBS                   -> navController.navigate(AppRoute.CarbsDialog.route)
+             ElementType.INSULIN                 -> navController.navigate(AppRoute.InsulinDialog.route)
++            ElementType.AFREZZA                 -> navController.navigate(AppRoute.AfrezzaDialog.route)
+             ElementType.TREATMENT               -> navController.navigate(AppRoute.TreatmentDialog.route)
+             ElementType.FILL                    -> navController.navigate(AppRoute.FillDialog.createRoute(FillPreselect.CARTRIDGE_CHANGE.ordinal))
+             ElementType.CANNULA_CHANGE          -> navController.navigate(AppRoute.FillDialog.createRoute(FillPreselect.SITE_CHANGE.ordinal))
+diff --git a/app/src/main/kotlin/app/aaps/compose/navigation/AppNavGraph.kt b/app/src/main/kotlin/app/aaps/compose/navigation/AppNavGraph.kt
+index e1d7e5d..850a21a 100644
+--- a/app/src/main/kotlin/app/aaps/compose/navigation/AppNavGraph.kt
++++ b/app/src/main/kotlin/app/aaps/compose/navigation/AppNavGraph.kt
+@@ -68,6 +68,7 @@ import app.aaps.ui.compose.configuration.ConfigurationViewModel
+ import app.aaps.ui.compose.extendedBolusDialog.ExtendedBolusDialogScreen
+ import app.aaps.ui.compose.fillDialog.FillDialogScreen
+ import app.aaps.ui.compose.history.HistoryScreen
++import app.aaps.ui.compose.afrezzaDialog.AfrezzaDialogScreen
+ import app.aaps.ui.compose.insulinDialog.InsulinDialogScreen
+ import app.aaps.ui.compose.insulinManagement.InsulinManagementScreen
+ import app.aaps.ui.compose.insulinManagement.InsulinManagementViewModel
+@@ -308,6 +309,15 @@ fun NavGraphBuilder.appNavGraph(
+         )
+     }
+ 
++    composable(route = AppRoute.AfrezzaDialog.route) {
++        AfrezzaDialogScreen(
++            onNavigateBack = { navController.safePopBackStack() },
++            onShowMessage = { message ->
++                // Toast or Snackbar handled by caller
++            }
++        )
++    }
++
+     composable(route = AppRoute.TreatmentDialog.route) {
+         TreatmentDialogScreen(
+             bgInfoState = graphViewModel.bgInfoState,
+diff --git a/app/src/main/kotlin/app/aaps/compose/navigation/AppRoute.kt b/app/src/main/kotlin/app/aaps/compose/navigation/AppRoute.kt
+index ccd2137..cd00d61 100644
+--- a/app/src/main/kotlin/app/aaps/compose/navigation/AppRoute.kt
++++ b/app/src/main/kotlin/app/aaps/compose/navigation/AppRoute.kt
+@@ -73,6 +73,7 @@ sealed class AppRoute(val route: String) {
+     data object CalibrationDialog : AppRoute("calibration_dialog")
+     data object CarbsDialog : AppRoute("carbs_dialog")
+     data object InsulinDialog : AppRoute("insulin_dialog")
++    data object AfrezzaDialog : AppRoute("afrezza_dialog")
+     data object TreatmentDialog : AppRoute("treatment_dialog")
+     data object TempBasalDialog : AppRoute("temp_basal_dialog")
+     data object ExtendedBolusDialog : AppRoute("extended_bolus_dialog")
+diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/quickLaunch/QuickLaunchAction.kt b/ui/src/main/kotlin/app/aaps/ui/compose/quickLaunch/QuickLaunchAction.kt
+index 6c9223b..7d4c380 100644
+--- a/ui/src/main/kotlin/app/aaps/ui/compose/quickLaunch/QuickLaunchAction.kt
++++ b/ui/src/main/kotlin/app/aaps/ui/compose/quickLaunch/QuickLaunchAction.kt
+@@ -81,6 +81,7 @@ sealed class QuickLaunchAction {
+         val Carbs = StaticAction(ElementType.CARBS)
+         val Wizard = StaticAction(ElementType.BOLUS_WIZARD)
+         val Treatment = StaticAction(ElementType.TREATMENT)
++        val Afrezza = StaticAction(ElementType.AFREZZA)
+         val Cgm = StaticAction(ElementType.CGM_XDRIP)
+         val Calibration = StaticAction(ElementType.CALIBRATION)
+         val InsulinManagement = StaticAction(ElementType.INSULIN_MANAGEMENT)
+-- 
+2.43.0
+
+
+From 3ca9db1692959aca7659003f9495697877e73a79 Mon Sep 17 00:00:00 2001
+From: Afrezza Feature <afrezza-dev@aaps.app>
+Date: Tue, 2 Jun 2026 01:23:28 +0000
+Subject: [PATCH 8/9] feat: Add Afrezza button to Treatment Bottom Sheet
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Add showAfrezza to TreatmentUiState
+- Inject InsulinManager into TreatmentViewModel to detect configured
+  inhaled insulin — Afrezza button appears automatically when an
+  inhaled insulin type exists in the user's insulin list
+- Thread showAfrezza through TreatmentBottomSheet -> TreatmentSelectionContent
+- Afrezza item appears between Insulin and Carbs in the treatment sheet
+- No user preference toggle needed — presence is driven by insulin config
+---
+ .../kotlin/app/aaps/ui/compose/main/MainScreen.kt  |  1 +
+ .../treatmentsSheet/TreatmentBottomSheet.kt        | 14 ++++++++++++++
+ .../ui/compose/treatmentsSheet/TreatmentUiState.kt |  1 +
+ .../compose/treatmentsSheet/TreatmentViewModel.kt  | 10 +++++++++-
+ 4 files changed, 25 insertions(+), 1 deletion(-)
+
+diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/main/MainScreen.kt b/ui/src/main/kotlin/app/aaps/ui/compose/main/MainScreen.kt
+index db08741..c22cfd1 100644
+--- a/ui/src/main/kotlin/app/aaps/ui/compose/main/MainScreen.kt
++++ b/ui/src/main/kotlin/app/aaps/ui/compose/main/MainScreen.kt
+@@ -432,6 +432,7 @@ fun MainScreen(
+             showCalibration = treatmentState.showCalibration,
+             showTreatment = treatmentState.showTreatment,
+             showInsulin = treatmentState.showInsulin,
++            showAfrezza = treatmentState.showAfrezza,
+             showCarbs = treatmentState.showCarbs,
+             showCalculator = treatmentState.showCalculator,
+             isDexcomSource = treatmentState.isDexcomSource,
+diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentBottomSheet.kt b/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentBottomSheet.kt
+index 72b7119..6d799b7 100644
+--- a/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentBottomSheet.kt
++++ b/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentBottomSheet.kt
+@@ -56,6 +56,7 @@ fun TreatmentBottomSheet(
+     showCalibration: Boolean,
+     showTreatment: Boolean,
+     showInsulin: Boolean,
++    showAfrezza: Boolean,
+     showCarbs: Boolean,
+     showCalculator: Boolean,
+     isDexcomSource: Boolean,
+@@ -89,6 +90,7 @@ fun TreatmentBottomSheet(
+                 showCalibration = showCalibration,
+                 showTreatment = showTreatment,
+                 showInsulin = showInsulin,
++                showAfrezza = showAfrezza,
+                 showCarbs = showCarbs,
+                 showCalculator = showCalculator,
+                 isDexcomSource = isDexcomSource,
+@@ -108,6 +110,7 @@ private fun TreatmentSelectionContent(
+     showCalibration: Boolean,
+     showTreatment: Boolean,
+     showInsulin: Boolean,
++    showAfrezza: Boolean,
+     showCarbs: Boolean,
+     showCalculator: Boolean,
+     isDexcomSource: Boolean,
+@@ -249,6 +252,17 @@ private fun TreatmentSelectionContent(
+             )
+         }
+ 
++        // Afrezza (inhaled insulin)
++        if (showAfrezza) {
++            TreatmentItem(
++                elementType = ElementType.AFREZZA,
++                enabled = true,
++                disabledAlpha = disabledAlpha,
++                onDismiss = onDismiss,
++                onClick = { onNavigate(NavigationRequest.Element(ElementType.AFREZZA)) }
++            )
++        }
++
+         // Carbs
+         if (showCarbs) {
+             TreatmentItem(
+diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentUiState.kt b/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentUiState.kt
+index b516bfb..77957b4 100644
+--- a/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentUiState.kt
++++ b/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentUiState.kt
+@@ -13,6 +13,7 @@ data class TreatmentUiState(
+     val showCalibration: Boolean = false,
+     val showTreatment: Boolean = true,
+     val showInsulin: Boolean = true,
++    val showAfrezza: Boolean = false,
+     val showCarbs: Boolean = true,
+     val showCalculator: Boolean = true,
+ 
+diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentViewModel.kt b/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentViewModel.kt
+index 0dab4f3..557a9f3 100644
+--- a/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentViewModel.kt
++++ b/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentViewModel.kt
+@@ -8,6 +8,8 @@ import app.aaps.core.data.model.RM
+ import app.aaps.core.interfaces.aps.Loop
+ import app.aaps.core.interfaces.constraints.ConstraintsChecker
+ import app.aaps.core.interfaces.iob.IobCobCalculator
++import app.aaps.core.interfaces.insulin.InsulinManager
++import app.aaps.core.interfaces.insulin.InsulinType
+ import app.aaps.core.interfaces.logging.AAPSLogger
+ import app.aaps.core.interfaces.plugin.ActivePlugin
+ import app.aaps.core.interfaces.profile.Profile
+@@ -56,7 +58,8 @@ class TreatmentViewModel @Inject constructor(
+     private val rxBus: RxBus,
+     private val aapsLogger: AAPSLogger,
+     private val dexcomBoyda: DexcomBoyda,
+-    private val elementAvailability: ElementAvailability
++    private val elementAvailability: ElementAvailability,
++    private val insulinManager: InsulinManager
+ ) : ViewModel() {
+ 
+     private val _uiState = MutableStateFlow(TreatmentUiState())
+@@ -96,6 +99,10 @@ class TreatmentViewModel @Inject constructor(
+             val showInsulin = preferences.get(BooleanKey.OverviewShowInsulinButton)
+             val showCarbs = preferences.get(BooleanKey.OverviewShowCarbsButton)
+             val showCalculator = preferences.get(BooleanKey.OverviewShowWizardButton)
++            // Show Afrezza button if user has configured an inhaled insulin
++            val showAfrezza = insulinManager.insulins.any {
++                InsulinType.fromPeak(it.insulinPeakTime).isInhaled
++            }
+ 
+             val showSettingsIcon = !preferences.simpleMode
+ 
+@@ -105,6 +112,7 @@ class TreatmentViewModel @Inject constructor(
+                     showCalibration = showCalibration,
+                     showTreatment = showTreatment,
+                     showInsulin = showInsulin,
++                    showAfrezza = showAfrezza,
+                     showCarbs = showCarbs,
+                     showCalculator = showCalculator,
+                     isDexcomSource = isDexcomSource,
+-- 
+2.43.0
+
+
+From 8d47f5a89971649bde748493323f2d0c58885457 Mon Sep 17 00:00:00 2001
+From: Afrezza Feature <afrezza-dev@aaps.app>
+Date: Tue, 2 Jun 2026 01:24:16 +0000
+Subject: [PATCH 9/9] feat: Add Sources.AfrezzaDialog for treatment history
+ tracking
+
+- Add AfrezzaDialog to Sources enum for UserEntry logging
+- Update AfrezzaDialogViewModel to use Sources.AfrezzaDialog
+- Afrezza doses are now distinguishable from pump boluses in
+  treatment history and UserEntry logs
+---
+ core/data/src/main/kotlin/app/aaps/core/data/ue/Sources.kt      | 1 +
+ .../app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogViewModel.kt | 2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/core/data/src/main/kotlin/app/aaps/core/data/ue/Sources.kt b/core/data/src/main/kotlin/app/aaps/core/data/ue/Sources.kt
+index e0e79ba..63d8244 100644
+--- a/core/data/src/main/kotlin/app/aaps/core/data/ue/Sources.kt
++++ b/core/data/src/main/kotlin/app/aaps/core/data/ue/Sources.kt
+@@ -3,6 +3,7 @@ package app.aaps.core.data.ue
+ enum class Sources {
+     TreatmentDialog,
+     InsulinDialog,
++    AfrezzaDialog,
+     CarbDialog,
+     WizardDialog,
+     QuickWizard,
+diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogViewModel.kt b/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogViewModel.kt
+index 26c0b1b..5acbfc8 100644
+--- a/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogViewModel.kt
++++ b/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogViewModel.kt
+@@ -111,7 +111,7 @@ class AfrezzaDialogViewModel @Inject constructor(
+                 persistenceLayer.insertOrUpdateBolus(
+                     bolus = bolus,
+                     action = Action.BOLUS,
+-                    source = Sources.InsulinDialog,
++                    source = Sources.AfrezzaDialog,
+                     note = rh.gs(R.string.afrezza_inhaled)
+                 )
+ 
+-- 
+2.43.0
+

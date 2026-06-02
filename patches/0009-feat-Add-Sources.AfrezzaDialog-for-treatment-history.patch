@@ -1,0 +1,43 @@
+From 8d47f5a89971649bde748493323f2d0c58885457 Mon Sep 17 00:00:00 2001
+From: Afrezza Feature <afrezza-dev@aaps.app>
+Date: Tue, 2 Jun 2026 01:24:16 +0000
+Subject: [PATCH 9/9] feat: Add Sources.AfrezzaDialog for treatment history
+ tracking
+
+- Add AfrezzaDialog to Sources enum for UserEntry logging
+- Update AfrezzaDialogViewModel to use Sources.AfrezzaDialog
+- Afrezza doses are now distinguishable from pump boluses in
+  treatment history and UserEntry logs
+---
+ core/data/src/main/kotlin/app/aaps/core/data/ue/Sources.kt      | 1 +
+ .../app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogViewModel.kt | 2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/core/data/src/main/kotlin/app/aaps/core/data/ue/Sources.kt b/core/data/src/main/kotlin/app/aaps/core/data/ue/Sources.kt
+index e0e79ba..63d8244 100644
+--- a/core/data/src/main/kotlin/app/aaps/core/data/ue/Sources.kt
++++ b/core/data/src/main/kotlin/app/aaps/core/data/ue/Sources.kt
+@@ -3,6 +3,7 @@ package app.aaps.core.data.ue
+ enum class Sources {
+     TreatmentDialog,
+     InsulinDialog,
++    AfrezzaDialog,
+     CarbDialog,
+     WizardDialog,
+     QuickWizard,
+diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogViewModel.kt b/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogViewModel.kt
+index 26c0b1b..5acbfc8 100644
+--- a/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogViewModel.kt
++++ b/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogViewModel.kt
+@@ -111,7 +111,7 @@ class AfrezzaDialogViewModel @Inject constructor(
+                 persistenceLayer.insertOrUpdateBolus(
+                     bolus = bolus,
+                     action = Action.BOLUS,
+-                    source = Sources.InsulinDialog,
++                    source = Sources.AfrezzaDialog,
+                     note = rh.gs(R.string.afrezza_inhaled)
+                 )
+ 
+-- 
+2.43.0
+

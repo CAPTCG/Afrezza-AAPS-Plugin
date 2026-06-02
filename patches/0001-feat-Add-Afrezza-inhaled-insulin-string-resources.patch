@@ -1,0 +1,45 @@
+From e0e927f1ed2c78dc37bc4d2570e85d39605e6fcd Mon Sep 17 00:00:00 2001
+From: Afrezza Feature <afrezza-dev@aaps.app>
+Date: Tue, 2 Jun 2026 01:10:07 +0000
+Subject: [PATCH 1/9] feat: Add Afrezza inhaled insulin string resources
+
+Add string resources for Afrezza (Technosphere) inhaled insulin support:
+- core/interfaces: insulin type label and description
+- ui: Afrezza quick-log dialog strings
+---
+ core/interfaces/src/main/res/values/strings.xml | 2 ++
+ ui/src/main/res/values/strings.xml              | 7 +++++++
+ 2 files changed, 9 insertions(+)
+
+diff --git a/core/interfaces/src/main/res/values/strings.xml b/core/interfaces/src/main/res/values/strings.xml
+index f307b7a..7532d0d 100644
+--- a/core/interfaces/src/main/res/values/strings.xml
++++ b/core/interfaces/src/main/res/values/strings.xml
+@@ -114,6 +114,8 @@
+     <string name="ultra_rapid_oref">Fiasp</string>
+     <string name="fast_acting_insulin_comment">Novorapid, Novolog, Humalog</string>
+     <string name="ultra_fast_acting_insulin_comment">Fiasp</string>
++    <string name="inhaled_afrezza">Afrezza (Inhaled)</string>
++    <string name="inhaled_afrezza_comment">Technosphere inhaled insulin — peak ~40 min, duration ~2.5 h</string>
+     <string name="insulin_peak_time">Peak Time [min]</string>
+ 
+     <!-- Concentration -->
+diff --git a/ui/src/main/res/values/strings.xml b/ui/src/main/res/values/strings.xml
+index f27f611..76465b1 100644
+--- a/ui/src/main/res/values/strings.xml
++++ b/ui/src/main/res/values/strings.xml
+@@ -341,4 +341,11 @@
+     <string name="cal_precheck_delta_too_high">Glucose is changing too fast (Δ %1$s %3$s per 5 min, limit %2$s). Wait for stability.</string>
+     <string name="cal_precheck_mark_sensor_change">Mark sensor change</string>
+ 
++    <!-- Afrezza Inhaled Insulin -->
++    <string name="log_afrezza_dose">Log Afrezza Dose</string>
++    <string name="afrezza_confirm_log">Log %1$dU Afrezza?</string>
++    <string name="afrezza_logged">%1$dU Afrezza logged</string>
++    <string name="afrezza_inhaled">Afrezza inhaled</string>
++    <string name="afrezza_not_configured">Add Afrezza insulin in Insulin Management first</string>
++
+ </resources>
+-- 
+2.43.0
+
