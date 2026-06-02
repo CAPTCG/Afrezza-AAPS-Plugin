@@ -1,6 +1,6 @@
-From 3ca9db1692959aca7659003f9495697877e73a79 Mon Sep 17 00:00:00 2001
+From 4c9d25a2d0d89f38fbd4a5d4dee51b9ca574cd0c Mon Sep 17 00:00:00 2001
 From: Afrezza Feature <afrezza-dev@aaps.app>
-Date: Tue, 2 Jun 2026 01:23:28 +0000
+Date: Tue, 2 Jun 2026 09:40:40 +0000
 Subject: [PATCH 8/9] feat: Add Afrezza button to Treatment Bottom Sheet
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -12,13 +12,14 @@ Content-Transfer-Encoding: 8bit
   inhaled insulin type exists in the user's insulin list
 - Thread showAfrezza through TreatmentBottomSheet -> TreatmentSelectionContent
 - Afrezza item appears between Insulin and Carbs in the treatment sheet
+- Include showAfrezza in Preview composable
 - No user preference toggle needed — presence is driven by insulin config
 ---
- .../kotlin/app/aaps/ui/compose/main/MainScreen.kt  |  1 +
- .../treatmentsSheet/TreatmentBottomSheet.kt        | 14 ++++++++++++++
- .../ui/compose/treatmentsSheet/TreatmentUiState.kt |  1 +
- .../compose/treatmentsSheet/TreatmentViewModel.kt  | 10 +++++++++-
- 4 files changed, 25 insertions(+), 1 deletion(-)
+ .../kotlin/app/aaps/ui/compose/main/MainScreen.kt |  1 +
+ .../treatmentsSheet/TreatmentBottomSheet.kt       | 15 +++++++++++++++
+ .../compose/treatmentsSheet/TreatmentUiState.kt   |  1 +
+ .../compose/treatmentsSheet/TreatmentViewModel.kt | 10 +++++++++-
+ 4 files changed, 26 insertions(+), 1 deletion(-)
 
 diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/main/MainScreen.kt b/ui/src/main/kotlin/app/aaps/ui/compose/main/MainScreen.kt
 index db08741..c22cfd1 100644
@@ -33,7 +34,7 @@ index db08741..c22cfd1 100644
              showCalculator = treatmentState.showCalculator,
              isDexcomSource = treatmentState.isDexcomSource,
 diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentBottomSheet.kt b/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentBottomSheet.kt
-index 72b7119..6d799b7 100644
+index 72b7119..a553527 100644
 --- a/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentBottomSheet.kt
 +++ b/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentBottomSheet.kt
 @@ -56,6 +56,7 @@ fun TreatmentBottomSheet(
@@ -78,6 +79,14 @@ index 72b7119..6d799b7 100644
          // Carbs
          if (showCarbs) {
              TreatmentItem(
+@@ -368,6 +382,7 @@ private fun TreatmentBottomSheetPreview() {
+             showCalibration = true,
+             showTreatment = true,
+             showInsulin = true,
++            showAfrezza = true,
+             showCarbs = true,
+             showCalculator = true,
+             isDexcomSource = false,
 diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentUiState.kt b/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentUiState.kt
 index b516bfb..77957b4 100644
 --- a/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentUiState.kt

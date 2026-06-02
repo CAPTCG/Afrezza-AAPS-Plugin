@@ -1,6 +1,6 @@
-From ff609236509211dcc3193ea67d32d145cfe066e3 Mon Sep 17 00:00:00 2001
+From f346f03a83af81c66843670320e3a513e2975652 Mon Sep 17 00:00:00 2001
 From: Afrezza Feature <afrezza-dev@aaps.app>
-Date: Tue, 2 Jun 2026 01:12:20 +0000
+Date: Tue, 2 Jun 2026 02:26:16 +0000
 Subject: [PATCH 3/9] feat: Add Afrezza to insulin template list, fix editor
  DIA validation
 

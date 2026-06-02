@@ -36,7 +36,7 @@ The AAPS `dev` branch already supports **per-bolus insulin configurations** — 
 | `Sources` | New `AfrezzaDialog` source for UserEntry/treatment history |
 | IOB Tests | 179-line test suite validating the oref model at Afrezza parameters |
 
-**Total: 23 files changed, ~600 lines added.**
+**Total: 27 files changed, ~607 lines added.**
 
 ---
 
@@ -244,14 +244,14 @@ The oref bilinear IOB model is used with these parameters. The included test sui
 | # | Commit | Description |
 |---|--------|-------------|
 | 1 | `feat: Add Afrezza inhaled insulin string resources` | Labels for UI, dialogs, and navigation |
-| 2 | `feat: Add InsulinType.OREF_INHALED_AFREZZA and inhaled DIA limits` | Enum entry + `HardLimits` for short DIA |
+| 2 | `feat: Add InsulinType.OREF_INHALED_AFREZZA and inhaled DIA limits` | Enum entry + `HardLimits` interface, impl, and test mock |
 | 3 | `feat: Add Afrezza to insulin template list, fix editor DIA validation` | Template + editor slider range |
 | 4 | `test: Add IOB curve validation tests for Afrezza parameters` | 9 tests covering curve correctness |
 | 5 | `feat: Add Afrezza quick-log dialog for one-tap dose logging` | Compose bottom sheet (4U/8U/12U) |
 | 6 | `feat: Add Afrezza to navigation system` | ElementType, icon, color, label |
-| 7 | `feat: Wire Afrezza dialog into navigation, quick-launch, and routing` | AppRoute + NavGraph + QuickLaunch |
-| 8 | `feat: Add Afrezza button to Treatment Bottom Sheet` | Auto-appears when inhaled insulin configured |
-| 9 | `feat: Add Sources.AfrezzaDialog for treatment history` | UserEntry tracking |
+| 7 | `feat: Wire Afrezza dialog into navigation, quick-launch, and routing` | AppRoute + NavGraph + QuickLaunch + staticActions |
+| 8 | `feat: Add Afrezza button to Treatment Bottom Sheet` | Auto-appears when inhaled insulin configured, includes Preview |
+| 9 | `feat: Add Sources.AfrezzaDialog for treatment history` | Sources enum, DB enum, SourcesExtension, UserEntryPresentation |
 
 ### Files Changed (by module)
 
@@ -260,7 +260,10 @@ app/                          — ComposeMainActivity, AppNavGraph, AppRoute
 core/data/                    — Sources enum, IOB curve tests
 core/interfaces/              — InsulinType, HardLimits, strings
 core/ui/                      — ElementType, ElementTypeStyle, strings
-implementation/               — InsulinImpl, HardLimitsImpl
+database/impl/                — UserEntry.Sources DB enum
+database/persistence/         — SourcesExtension bidirectional mapping
+implementation/               — InsulinImpl, HardLimitsImpl, UserEntryPresentationHelperImpl
+shared/tests/                 — HardLimitsMock
 ui/                           — AfrezzaDialog (3 files), InsulinManagementViewModel,
                                 MainScreen, QuickLaunchAction, TreatmentBottomSheet,
                                 TreatmentUiState, TreatmentViewModel, strings

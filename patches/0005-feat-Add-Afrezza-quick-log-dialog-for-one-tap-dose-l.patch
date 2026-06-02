@@ -1,11 +1,8 @@
-From 385640dd8a650af482df29f38e5968abc510b9b0 Mon Sep 17 00:00:00 2001
+From d49839097c0081b0c543014eb67793cfd5e36928 Mon Sep 17 00:00:00 2001
 From: Afrezza Feature <afrezza-dev@aaps.app>
-Date: Tue, 2 Jun 2026 01:14:32 +0000
+Date: Tue, 2 Jun 2026 02:26:39 +0000
 Subject: [PATCH 5/9] feat: Add Afrezza quick-log dialog for one-tap dose
  logging
-MIME-Version: 1.0
-Content-Type: text/plain; charset=UTF-8
-Content-Transfer-Encoding: 8bit
 
 New Compose bottom sheet dialog with three large cartridge-size buttons
 (4U, 8U, 12U) for rapid Afrezza dose logging:
@@ -15,12 +12,9 @@ New Compose bottom sheet dialog with three large cartridge-size buttons
   creates record-only bolus with correct per-bolus ICfg
 - AfrezzaDialogUiState: Minimal state for cartridge selection flow
 
-User flow: tap cartridge → confirm → done (2 taps total).
+User flow: tap cartridge -> confirm -> done (2 taps total).
 Bolus is created as record-only with Afrezza ICfg, ensuring the
 IOB calculator uses the correct short-DIA curve.
-
-Shows error state if Afrezza insulin hasn't been added in
-Insulin Management yet.
 ---
  .../afrezzaDialog/AfrezzaDialogScreen.kt      | 192 ++++++++++++++++++
  .../afrezzaDialog/AfrezzaDialogUiState.kt     |  13 ++
@@ -249,7 +243,7 @@ index 0000000..9fe4cc8
 +)
 diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogViewModel.kt b/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogViewModel.kt
 new file mode 100644
-index 0000000..26c0b1b
+index 0000000..5acbfc8
 --- /dev/null
 +++ b/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogViewModel.kt
 @@ -0,0 +1,136 @@
@@ -366,7 +360,7 @@ index 0000000..26c0b1b
 +                persistenceLayer.insertOrUpdateBolus(
 +                    bolus = bolus,
 +                    action = Action.BOLUS,
-+                    source = Sources.InsulinDialog,
++                    source = Sources.AfrezzaDialog,
 +                    note = rh.gs(R.string.afrezza_inhaled)
 +                )
 +

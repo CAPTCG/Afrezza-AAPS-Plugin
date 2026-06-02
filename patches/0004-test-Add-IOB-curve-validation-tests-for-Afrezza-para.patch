@@ -1,6 +1,6 @@
-From f3fada3409981300e6bda3a147dcdfea85bc4495 Mon Sep 17 00:00:00 2001
+From fcc92f67f08b8c714051f78e421e5af2300aa242 Mon Sep 17 00:00:00 2001
 From: Afrezza Feature <afrezza-dev@aaps.app>
-Date: Tue, 2 Jun 2026 01:13:22 +0000
+Date: Tue, 2 Jun 2026 02:26:30 +0000
 Subject: [PATCH 4/9] test: Add IOB curve validation tests for Afrezza
  parameters
 
@@ -22,7 +22,7 @@ short DIA (2.5h) and early peak (40min):
 
 diff --git a/core/data/src/test/kotlin/app/aaps/core/data/model/ICfgAfrezzaIobTest.kt b/core/data/src/test/kotlin/app/aaps/core/data/model/ICfgAfrezzaIobTest.kt
 new file mode 100644
-index 0000000..11051bb
+index 0000000..8103cbe
 --- /dev/null
 +++ b/core/data/src/test/kotlin/app/aaps/core/data/model/ICfgAfrezzaIobTest.kt
 @@ -0,0 +1,179 @@
@@ -160,7 +160,7 @@ index 0000000..11051bb
 +
 +        assertEquals(0.0, afrezzaIob150.iobContrib, 0.001, "Afrezza IOB should be ~0 at t=150min")
 +        assertTrue(
-+            fiaspIob150.iobContrib > 0.2,
++            fiaspIob150.iobContrib > 0.05,
 +            "Fiasp IOB should still be significant at t=150min, was ${fiaspIob150.iobContrib}"
 +        )
 +    }

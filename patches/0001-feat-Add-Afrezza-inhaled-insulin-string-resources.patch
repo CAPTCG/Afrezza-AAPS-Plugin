@@ -1,15 +1,17 @@
-From e0e927f1ed2c78dc37bc4d2570e85d39605e6fcd Mon Sep 17 00:00:00 2001
+From 36fee029f5c6751d0ae325074336b5fc61a5a190 Mon Sep 17 00:00:00 2001
 From: Afrezza Feature <afrezza-dev@aaps.app>
-Date: Tue, 2 Jun 2026 01:10:07 +0000
+Date: Tue, 2 Jun 2026 02:26:00 +0000
 Subject: [PATCH 1/9] feat: Add Afrezza inhaled insulin string resources
 
 Add string resources for Afrezza (Technosphere) inhaled insulin support:
 - core/interfaces: insulin type label and description
+- core/ui: navigation label and treatment description
 - ui: Afrezza quick-log dialog strings
 ---
  core/interfaces/src/main/res/values/strings.xml | 2 ++
+ core/ui/src/main/res/values/strings.xml         | 2 ++
  ui/src/main/res/values/strings.xml              | 7 +++++++
- 2 files changed, 9 insertions(+)
+ 3 files changed, 11 insertions(+)
 
 diff --git a/core/interfaces/src/main/res/values/strings.xml b/core/interfaces/src/main/res/values/strings.xml
 index f307b7a..7532d0d 100644
@@ -24,6 +26,26 @@ index f307b7a..7532d0d 100644
      <string name="insulin_peak_time">Peak Time [min]</string>
  
      <!-- Concentration -->
+diff --git a/core/ui/src/main/res/values/strings.xml b/core/ui/src/main/res/values/strings.xml
+index d55b42c..e41707e 100644
+--- a/core/ui/src/main/res/values/strings.xml
++++ b/core/ui/src/main/res/values/strings.xml
+@@ -211,6 +211,7 @@
+     <string name="select_site_location">Select site location</string>
+     <string name="site_location">Site location</string>
+     <string name="overview_insulin_label">Insulin</string>
++    <string name="overview_afrezza_label">Afrezza</string>
+     <string name="stoptemptarget">Stop temp target</string>
+     <string name="closedloop">Closed Loop</string>
+     <string name="openloop">Open Loop</string>
+@@ -403,6 +404,7 @@
+     <string name="boluswizard">Bolus wizard</string>
+     <string name="treatment_desc">Record insulin and carbs together</string>
+     <string name="treatment_insulin_desc">Deliver bolus manually</string>
++    <string name="treatment_afrezza_desc">Log inhaled Afrezza dose</string>
+     <string name="treatment_carbs_desc">Record carbs without insulin</string>
+     <string name="treatment_calculator_desc">Calculate bolus</string>
+     <string name="insulin_management">Insulin</string>
 diff --git a/ui/src/main/res/values/strings.xml b/ui/src/main/res/values/strings.xml
 index f27f611..76465b1 100644
 --- a/ui/src/main/res/values/strings.xml

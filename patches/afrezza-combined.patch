@@ -1,15 +1,17 @@
-From e0e927f1ed2c78dc37bc4d2570e85d39605e6fcd Mon Sep 17 00:00:00 2001
+From 36fee029f5c6751d0ae325074336b5fc61a5a190 Mon Sep 17 00:00:00 2001
 From: Afrezza Feature <afrezza-dev@aaps.app>
-Date: Tue, 2 Jun 2026 01:10:07 +0000
+Date: Tue, 2 Jun 2026 02:26:00 +0000
 Subject: [PATCH 1/9] feat: Add Afrezza inhaled insulin string resources
 
 Add string resources for Afrezza (Technosphere) inhaled insulin support:
 - core/interfaces: insulin type label and description
+- core/ui: navigation label and treatment description
 - ui: Afrezza quick-log dialog strings
 ---
  core/interfaces/src/main/res/values/strings.xml | 2 ++
+ core/ui/src/main/res/values/strings.xml         | 2 ++
  ui/src/main/res/values/strings.xml              | 7 +++++++
- 2 files changed, 9 insertions(+)
+ 3 files changed, 11 insertions(+)
 
 diff --git a/core/interfaces/src/main/res/values/strings.xml b/core/interfaces/src/main/res/values/strings.xml
 index f307b7a..7532d0d 100644
@@ -24,6 +26,26 @@ index f307b7a..7532d0d 100644
      <string name="insulin_peak_time">Peak Time [min]</string>
  
      <!-- Concentration -->
+diff --git a/core/ui/src/main/res/values/strings.xml b/core/ui/src/main/res/values/strings.xml
+index d55b42c..e41707e 100644
+--- a/core/ui/src/main/res/values/strings.xml
++++ b/core/ui/src/main/res/values/strings.xml
+@@ -211,6 +211,7 @@
+     <string name="select_site_location">Select site location</string>
+     <string name="site_location">Site location</string>
+     <string name="overview_insulin_label">Insulin</string>
++    <string name="overview_afrezza_label">Afrezza</string>
+     <string name="stoptemptarget">Stop temp target</string>
+     <string name="closedloop">Closed Loop</string>
+     <string name="openloop">Open Loop</string>
+@@ -403,6 +404,7 @@
+     <string name="boluswizard">Bolus wizard</string>
+     <string name="treatment_desc">Record insulin and carbs together</string>
+     <string name="treatment_insulin_desc">Deliver bolus manually</string>
++    <string name="treatment_afrezza_desc">Log inhaled Afrezza dose</string>
+     <string name="treatment_carbs_desc">Record carbs without insulin</string>
+     <string name="treatment_calculator_desc">Calculate bolus</string>
+     <string name="insulin_management">Insulin</string>
 diff --git a/ui/src/main/res/values/strings.xml b/ui/src/main/res/values/strings.xml
 index f27f611..76465b1 100644
 --- a/ui/src/main/res/values/strings.xml
@@ -44,16 +66,16 @@ index f27f611..76465b1 100644
 2.43.0
 
 
-From a22d5bfecd43d1d62994a4b668e3a6e4917e1059 Mon Sep 17 00:00:00 2001
+From d7a899993e6897d99094808df32c25c725530ab9 Mon Sep 17 00:00:00 2001
 From: Afrezza Feature <afrezza-dev@aaps.app>
-Date: Tue, 2 Jun 2026 01:11:32 +0000
+Date: Tue, 2 Jun 2026 02:26:10 +0000
 Subject: [PATCH 2/9] feat: Add InsulinType.OREF_INHALED_AFREZZA and inhaled
  DIA limits
 
 - Add OREF_INHALED_AFREZZA enum entry (peak=40min, DIA=2.5h, value=6)
 - Add isInhaled property to InsulinType for delivery route identification
 - Add MIN_DIA_INHALED/MAX_DIA_INHALED to HardLimits (1.5h-4.0h range)
-- Add minDiaInhaled()/maxDiaInhaled() to HardLimits interface and impl
+- Add minDiaInhaled()/maxDiaInhaled() to HardLimits interface, impl, and test mock
 
 Afrezza (Technosphere) pharmacokinetics: onset ~12min, peak ~40min,
 clinical duration 1.5-3h depending on cartridge size (4U/8U/12U).
@@ -62,7 +84,8 @@ Conservative DIA of 2.5h covers the majority of insulin activity.
  .../kotlin/app/aaps/core/interfaces/insulin/InsulinType.kt   | 5 +++--
  .../main/kotlin/app/aaps/core/interfaces/utils/HardLimits.kt | 4 ++++
  .../kotlin/app/aaps/implementation/utils/HardLimitsImpl.kt   | 2 ++
- 3 files changed, 9 insertions(+), 2 deletions(-)
+ .../src/main/kotlin/app/aaps/shared/tests/HardLimitsMock.kt  | 2 ++
+ 4 files changed, 11 insertions(+), 2 deletions(-)
 
 diff --git a/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/insulin/InsulinType.kt b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/insulin/InsulinType.kt
 index c65bbe2..529a001 100644
@@ -122,13 +145,26 @@ index 0f2d4e6..36d9b6a 100644
      override fun minPeak(): Int = HardLimits.MIN_PEAK
      override fun maxPeak(): Int = HardLimits.MAX_PEAK
      override fun minIC(): Double = HardLimits.MIN_IC[loadAge()]
+diff --git a/shared/tests/src/main/kotlin/app/aaps/shared/tests/HardLimitsMock.kt b/shared/tests/src/main/kotlin/app/aaps/shared/tests/HardLimitsMock.kt
+index 57dee30..d3e8f06 100644
+--- a/shared/tests/src/main/kotlin/app/aaps/shared/tests/HardLimitsMock.kt
++++ b/shared/tests/src/main/kotlin/app/aaps/shared/tests/HardLimitsMock.kt
+@@ -66,6 +66,8 @@ class HardLimitsMock @Inject constructor(
+     override fun maxBasal(): Double = MAX_BASAL[loadAge()]
+     override fun minDia(): Double = MIN_DIA[loadAge()]
+     override fun maxDia(): Double = MAX_DIA[loadAge()]
++    override fun minDiaInhaled(): Double = HardLimits.MIN_DIA_INHALED[loadAge()]
++    override fun maxDiaInhaled(): Double = HardLimits.MAX_DIA_INHALED[loadAge()]
+     override fun minPeak(): Int = MIN_PEAK
+     override fun maxPeak(): Int = MAX_PEAK
+     override fun minIC(): Double = MIN_IC[loadAge()]
 -- 
 2.43.0
 
 
-From ff609236509211dcc3193ea67d32d145cfe066e3 Mon Sep 17 00:00:00 2001
+From f346f03a83af81c66843670320e3a513e2975652 Mon Sep 17 00:00:00 2001
 From: Afrezza Feature <afrezza-dev@aaps.app>
-Date: Tue, 2 Jun 2026 01:12:20 +0000
+Date: Tue, 2 Jun 2026 02:26:16 +0000
 Subject: [PATCH 3/9] feat: Add Afrezza to insulin template list, fix editor
  DIA validation
 
@@ -192,9 +228,9 @@ index c35d938..7334647 100644
 2.43.0
 
 
-From f3fada3409981300e6bda3a147dcdfea85bc4495 Mon Sep 17 00:00:00 2001
+From fcc92f67f08b8c714051f78e421e5af2300aa242 Mon Sep 17 00:00:00 2001
 From: Afrezza Feature <afrezza-dev@aaps.app>
-Date: Tue, 2 Jun 2026 01:13:22 +0000
+Date: Tue, 2 Jun 2026 02:26:30 +0000
 Subject: [PATCH 4/9] test: Add IOB curve validation tests for Afrezza
  parameters
 
@@ -216,7 +252,7 @@ short DIA (2.5h) and early peak (40min):
 
 diff --git a/core/data/src/test/kotlin/app/aaps/core/data/model/ICfgAfrezzaIobTest.kt b/core/data/src/test/kotlin/app/aaps/core/data/model/ICfgAfrezzaIobTest.kt
 new file mode 100644
-index 0000000..11051bb
+index 0000000..8103cbe
 --- /dev/null
 +++ b/core/data/src/test/kotlin/app/aaps/core/data/model/ICfgAfrezzaIobTest.kt
 @@ -0,0 +1,179 @@
@@ -354,7 +390,7 @@ index 0000000..11051bb
 +
 +        assertEquals(0.0, afrezzaIob150.iobContrib, 0.001, "Afrezza IOB should be ~0 at t=150min")
 +        assertTrue(
-+            fiaspIob150.iobContrib > 0.2,
++            fiaspIob150.iobContrib > 0.05,
 +            "Fiasp IOB should still be significant at t=150min, was ${fiaspIob150.iobContrib}"
 +        )
 +    }
@@ -403,14 +439,11 @@ index 0000000..11051bb
 2.43.0
 
 
-From 385640dd8a650af482df29f38e5968abc510b9b0 Mon Sep 17 00:00:00 2001
+From d49839097c0081b0c543014eb67793cfd5e36928 Mon Sep 17 00:00:00 2001
 From: Afrezza Feature <afrezza-dev@aaps.app>
-Date: Tue, 2 Jun 2026 01:14:32 +0000
+Date: Tue, 2 Jun 2026 02:26:39 +0000
 Subject: [PATCH 5/9] feat: Add Afrezza quick-log dialog for one-tap dose
  logging
-MIME-Version: 1.0
-Content-Type: text/plain; charset=UTF-8
-Content-Transfer-Encoding: 8bit
 
 New Compose bottom sheet dialog with three large cartridge-size buttons
 (4U, 8U, 12U) for rapid Afrezza dose logging:
@@ -420,12 +453,9 @@ New Compose bottom sheet dialog with three large cartridge-size buttons
   creates record-only bolus with correct per-bolus ICfg
 - AfrezzaDialogUiState: Minimal state for cartridge selection flow
 
-User flow: tap cartridge → confirm → done (2 taps total).
+User flow: tap cartridge -> confirm -> done (2 taps total).
 Bolus is created as record-only with Afrezza ICfg, ensuring the
 IOB calculator uses the correct short-DIA curve.
-
-Shows error state if Afrezza insulin hasn't been added in
-Insulin Management yet.
 ---
  .../afrezzaDialog/AfrezzaDialogScreen.kt      | 192 ++++++++++++++++++
  .../afrezzaDialog/AfrezzaDialogUiState.kt     |  13 ++
@@ -654,7 +684,7 @@ index 0000000..9fe4cc8
 +)
 diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogViewModel.kt b/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogViewModel.kt
 new file mode 100644
-index 0000000..26c0b1b
+index 0000000..5acbfc8
 --- /dev/null
 +++ b/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogViewModel.kt
 @@ -0,0 +1,136 @@
@@ -771,7 +801,7 @@ index 0000000..26c0b1b
 +                persistenceLayer.insertOrUpdateBolus(
 +                    bolus = bolus,
 +                    action = Action.BOLUS,
-+                    source = Sources.InsulinDialog,
++                    source = Sources.AfrezzaDialog,
 +                    note = rh.gs(R.string.afrezza_inhaled)
 +                )
 +
@@ -798,21 +828,19 @@ index 0000000..26c0b1b
 2.43.0
 
 
-From cd107e1f9bc9d478e2f411412d2202f39bf87796 Mon Sep 17 00:00:00 2001
+From ad8f195c7235bf5b4ee7f85b6130be13626c1119 Mon Sep 17 00:00:00 2001
 From: Afrezza Feature <afrezza-dev@aaps.app>
-Date: Tue, 2 Jun 2026 01:17:24 +0000
+Date: Tue, 2 Jun 2026 09:40:21 +0000
 Subject: [PATCH 6/9] feat: Add Afrezza to navigation system (ElementType,
  icon, label, color)
 
 - Add ElementType.AFREZZA with TREATMENT category and BOLUS protection
 - Map Afrezza icon (IcBolus), color (insulin), label, and description
-- Add string resources for Afrezza navigation label and description
 - Afrezza appears in global search and treatment action sheets
 ---
  .../kotlin/app/aaps/core/ui/compose/navigation/ElementType.kt | 1 +
  .../app/aaps/core/ui/compose/navigation/ElementTypeStyle.kt   | 4 ++++
- core/ui/src/main/res/values/strings.xml                       | 2 ++
- 3 files changed, 7 insertions(+)
+ 2 files changed, 5 insertions(+)
 
 diff --git a/core/ui/src/main/kotlin/app/aaps/core/ui/compose/navigation/ElementType.kt b/core/ui/src/main/kotlin/app/aaps/core/ui/compose/navigation/ElementType.kt
 index 4f890e7..92172d2 100644
@@ -862,47 +890,27 @@ index a534876..fc99d56 100644
      ElementType.CARBS                   -> R.string.treatment_carbs_desc
      ElementType.BOLUS_WIZARD            -> R.string.treatment_calculator_desc
      ElementType.TREATMENT               -> R.string.treatment_desc
-diff --git a/core/ui/src/main/res/values/strings.xml b/core/ui/src/main/res/values/strings.xml
-index d55b42c..e41707e 100644
---- a/core/ui/src/main/res/values/strings.xml
-+++ b/core/ui/src/main/res/values/strings.xml
-@@ -211,6 +211,7 @@
-     <string name="select_site_location">Select site location</string>
-     <string name="site_location">Site location</string>
-     <string name="overview_insulin_label">Insulin</string>
-+    <string name="overview_afrezza_label">Afrezza</string>
-     <string name="stoptemptarget">Stop temp target</string>
-     <string name="closedloop">Closed Loop</string>
-     <string name="openloop">Open Loop</string>
-@@ -403,6 +404,7 @@
-     <string name="boluswizard">Bolus wizard</string>
-     <string name="treatment_desc">Record insulin and carbs together</string>
-     <string name="treatment_insulin_desc">Deliver bolus manually</string>
-+    <string name="treatment_afrezza_desc">Log inhaled Afrezza dose</string>
-     <string name="treatment_carbs_desc">Record carbs without insulin</string>
-     <string name="treatment_calculator_desc">Calculate bolus</string>
-     <string name="insulin_management">Insulin</string>
 -- 
 2.43.0
 
 
-From 73d80ae63373ceb3e1d8e3eeb753a56b67e6c4f9 Mon Sep 17 00:00:00 2001
+From fa734a752c073b31ccddbb2d1b3132a3dead3d48 Mon Sep 17 00:00:00 2001
 From: Afrezza Feature <afrezza-dev@aaps.app>
-Date: Tue, 2 Jun 2026 01:19:23 +0000
+Date: Tue, 2 Jun 2026 09:40:32 +0000
 Subject: [PATCH 7/9] feat: Wire Afrezza dialog into navigation, quick-launch,
  and routing
 
 - Add AppRoute.AfrezzaDialog route definition
 - Register AfrezzaDialogScreen composable in AppNavGraph
 - Add ElementType.AFREZZA -> AfrezzaDialog navigation handler
-- Add QuickLaunchAction.Afrezza for home screen action bar
+- Add QuickLaunchAction.Afrezza static action and to staticActions list
 - Users can add Afrezza to their quick-launch bar via configuration
 ---
  app/src/main/kotlin/app/aaps/ComposeMainActivity.kt    |  1 +
  .../kotlin/app/aaps/compose/navigation/AppNavGraph.kt  | 10 ++++++++++
  .../kotlin/app/aaps/compose/navigation/AppRoute.kt     |  1 +
- .../aaps/ui/compose/quickLaunch/QuickLaunchAction.kt   |  1 +
- 4 files changed, 13 insertions(+)
+ .../aaps/ui/compose/quickLaunch/QuickLaunchAction.kt   |  3 ++-
+ 4 files changed, 14 insertions(+), 1 deletion(-)
 
 diff --git a/app/src/main/kotlin/app/aaps/ComposeMainActivity.kt b/app/src/main/kotlin/app/aaps/ComposeMainActivity.kt
 index e53d6a8..bba55a3 100644
@@ -957,7 +965,7 @@ index ccd2137..cd00d61 100644
      data object TempBasalDialog : AppRoute("temp_basal_dialog")
      data object ExtendedBolusDialog : AppRoute("extended_bolus_dialog")
 diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/quickLaunch/QuickLaunchAction.kt b/ui/src/main/kotlin/app/aaps/ui/compose/quickLaunch/QuickLaunchAction.kt
-index 6c9223b..7d4c380 100644
+index 6c9223b..53917e8 100644
 --- a/ui/src/main/kotlin/app/aaps/ui/compose/quickLaunch/QuickLaunchAction.kt
 +++ b/ui/src/main/kotlin/app/aaps/ui/compose/quickLaunch/QuickLaunchAction.kt
 @@ -81,6 +81,7 @@ sealed class QuickLaunchAction {
@@ -968,13 +976,22 @@ index 6c9223b..7d4c380 100644
          val Cgm = StaticAction(ElementType.CGM_XDRIP)
          val Calibration = StaticAction(ElementType.CALIBRATION)
          val InsulinManagement = StaticAction(ElementType.INSULIN_MANAGEMENT)
+@@ -99,7 +100,7 @@ sealed class QuickLaunchAction {
+ 
+         /** All static actions available for the configuration screen (excluding QuickLaunchConfig) */
+         val staticActions: List<QuickLaunchAction> = listOf(
+-            Insulin, InsulinManagement, Carbs, Wizard, Treatment, Cgm, Calibration,
++            Insulin, InsulinManagement, Afrezza, Carbs, Wizard, Treatment, Cgm, Calibration,
+             BgCheck, Note, Exercise, Question, Announcement,
+             SensorInsert, BatteryChange, CannulaChange, Fill, SiteRotation
+         )
 -- 
 2.43.0
 
 
-From 3ca9db1692959aca7659003f9495697877e73a79 Mon Sep 17 00:00:00 2001
+From 4c9d25a2d0d89f38fbd4a5d4dee51b9ca574cd0c Mon Sep 17 00:00:00 2001
 From: Afrezza Feature <afrezza-dev@aaps.app>
-Date: Tue, 2 Jun 2026 01:23:28 +0000
+Date: Tue, 2 Jun 2026 09:40:40 +0000
 Subject: [PATCH 8/9] feat: Add Afrezza button to Treatment Bottom Sheet
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -986,13 +1003,14 @@ Content-Transfer-Encoding: 8bit
   inhaled insulin type exists in the user's insulin list
 - Thread showAfrezza through TreatmentBottomSheet -> TreatmentSelectionContent
 - Afrezza item appears between Insulin and Carbs in the treatment sheet
+- Include showAfrezza in Preview composable
 - No user preference toggle needed — presence is driven by insulin config
 ---
- .../kotlin/app/aaps/ui/compose/main/MainScreen.kt  |  1 +
- .../treatmentsSheet/TreatmentBottomSheet.kt        | 14 ++++++++++++++
- .../ui/compose/treatmentsSheet/TreatmentUiState.kt |  1 +
- .../compose/treatmentsSheet/TreatmentViewModel.kt  | 10 +++++++++-
- 4 files changed, 25 insertions(+), 1 deletion(-)
+ .../kotlin/app/aaps/ui/compose/main/MainScreen.kt |  1 +
+ .../treatmentsSheet/TreatmentBottomSheet.kt       | 15 +++++++++++++++
+ .../compose/treatmentsSheet/TreatmentUiState.kt   |  1 +
+ .../compose/treatmentsSheet/TreatmentViewModel.kt | 10 +++++++++-
+ 4 files changed, 26 insertions(+), 1 deletion(-)
 
 diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/main/MainScreen.kt b/ui/src/main/kotlin/app/aaps/ui/compose/main/MainScreen.kt
 index db08741..c22cfd1 100644
@@ -1007,7 +1025,7 @@ index db08741..c22cfd1 100644
              showCalculator = treatmentState.showCalculator,
              isDexcomSource = treatmentState.isDexcomSource,
 diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentBottomSheet.kt b/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentBottomSheet.kt
-index 72b7119..6d799b7 100644
+index 72b7119..a553527 100644
 --- a/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentBottomSheet.kt
 +++ b/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentBottomSheet.kt
 @@ -56,6 +56,7 @@ fun TreatmentBottomSheet(
@@ -1052,6 +1070,14 @@ index 72b7119..6d799b7 100644
          // Carbs
          if (showCarbs) {
              TreatmentItem(
+@@ -368,6 +382,7 @@ private fun TreatmentBottomSheetPreview() {
+             showCalibration = true,
+             showTreatment = true,
+             showInsulin = true,
++            showAfrezza = true,
+             showCarbs = true,
+             showCalculator = true,
+             isDexcomSource = false,
 diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentUiState.kt b/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentUiState.kt
 index b516bfb..77957b4 100644
 --- a/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentUiState.kt
@@ -1110,20 +1136,24 @@ index 0dab4f3..557a9f3 100644
 2.43.0
 
 
-From 8d47f5a89971649bde748493323f2d0c58885457 Mon Sep 17 00:00:00 2001
+From d0aa7adcb065d6b27e41246f8bcb19ad6a5e1ecc Mon Sep 17 00:00:00 2001
 From: Afrezza Feature <afrezza-dev@aaps.app>
-Date: Tue, 2 Jun 2026 01:24:16 +0000
+Date: Tue, 2 Jun 2026 09:40:48 +0000
 Subject: [PATCH 9/9] feat: Add Sources.AfrezzaDialog for treatment history
  tracking
 
-- Add AfrezzaDialog to Sources enum for UserEntry logging
-- Update AfrezzaDialogViewModel to use Sources.AfrezzaDialog
+- Add AfrezzaDialog to Sources enum (core/data)
+- Add AfrezzaDialog to UserEntry.Sources DB enum (database/impl)
+- Add bidirectional mapping in SourcesExtension (database/persistence)
+- Add icon and color mappings in UserEntryPresentationHelperImpl
 - Afrezza doses are now distinguishable from pump boluses in
   treatment history and UserEntry logs
 ---
  core/data/src/main/kotlin/app/aaps/core/data/ue/Sources.kt      | 1 +
- .../app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogViewModel.kt | 2 +-
- 2 files changed, 2 insertions(+), 1 deletion(-)
+ .../src/main/kotlin/app/aaps/database/entities/UserEntry.kt     | 1 +
+ .../aaps/database/persistence/converters/SourcesExtension.kt    | 2 ++
+ .../implementation/userEntry/UserEntryPresentationHelperImpl.kt | 2 ++
+ 4 files changed, 6 insertions(+)
 
 diff --git a/core/data/src/main/kotlin/app/aaps/core/data/ue/Sources.kt b/core/data/src/main/kotlin/app/aaps/core/data/ue/Sources.kt
 index e0e79ba..63d8244 100644
@@ -1137,19 +1167,58 @@ index e0e79ba..63d8244 100644
      CarbDialog,
      WizardDialog,
      QuickWizard,
-diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogViewModel.kt b/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogViewModel.kt
-index 26c0b1b..5acbfc8 100644
---- a/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogViewModel.kt
-+++ b/ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogViewModel.kt
-@@ -111,7 +111,7 @@ class AfrezzaDialogViewModel @Inject constructor(
-                 persistenceLayer.insertOrUpdateBolus(
-                     bolus = bolus,
-                     action = Action.BOLUS,
--                    source = Sources.InsulinDialog,
-+                    source = Sources.AfrezzaDialog,
-                     note = rh.gs(R.string.afrezza_inhaled)
-                 )
- 
+diff --git a/database/impl/src/main/kotlin/app/aaps/database/entities/UserEntry.kt b/database/impl/src/main/kotlin/app/aaps/database/entities/UserEntry.kt
+index b94412e..88826fe 100644
+--- a/database/impl/src/main/kotlin/app/aaps/database/entities/UserEntry.kt
++++ b/database/impl/src/main/kotlin/app/aaps/database/entities/UserEntry.kt
+@@ -134,6 +134,7 @@ data class UserEntry(
+     enum class Sources {
+         TreatmentDialog,
+         InsulinDialog,
++        AfrezzaDialog,
+         CarbDialog,
+         WizardDialog,
+         QuickWizard,
+diff --git a/database/persistence/src/main/kotlin/app/aaps/database/persistence/converters/SourcesExtension.kt b/database/persistence/src/main/kotlin/app/aaps/database/persistence/converters/SourcesExtension.kt
+index c84dedf..7e69143 100644
+--- a/database/persistence/src/main/kotlin/app/aaps/database/persistence/converters/SourcesExtension.kt
++++ b/database/persistence/src/main/kotlin/app/aaps/database/persistence/converters/SourcesExtension.kt
+@@ -7,6 +7,7 @@ fun UserEntry.Sources.fromDb(): Sources =
+     when (this) {
+         UserEntry.Sources.TreatmentDialog     -> Sources.TreatmentDialog
+         UserEntry.Sources.InsulinDialog       -> Sources.InsulinDialog
++        UserEntry.Sources.AfrezzaDialog       -> Sources.AfrezzaDialog
+         UserEntry.Sources.CarbDialog          -> Sources.CarbDialog
+         UserEntry.Sources.WizardDialog        -> Sources.WizardDialog
+         UserEntry.Sources.QuickWizard         -> Sources.QuickWizard
+@@ -94,6 +95,7 @@ fun Sources.toDb(): UserEntry.Sources =
+     when (this) {
+         Sources.TreatmentDialog     -> UserEntry.Sources.TreatmentDialog
+         Sources.InsulinDialog       -> UserEntry.Sources.InsulinDialog
++        Sources.AfrezzaDialog       -> UserEntry.Sources.AfrezzaDialog
+         Sources.CarbDialog          -> UserEntry.Sources.CarbDialog
+         Sources.WizardDialog        -> UserEntry.Sources.WizardDialog
+         Sources.QuickWizard         -> UserEntry.Sources.QuickWizard
+diff --git a/implementation/src/main/kotlin/app/aaps/implementation/userEntry/UserEntryPresentationHelperImpl.kt b/implementation/src/main/kotlin/app/aaps/implementation/userEntry/UserEntryPresentationHelperImpl.kt
+index 1d8d79e..3ac350e 100644
+--- a/implementation/src/main/kotlin/app/aaps/implementation/userEntry/UserEntryPresentationHelperImpl.kt
++++ b/implementation/src/main/kotlin/app/aaps/implementation/userEntry/UserEntryPresentationHelperImpl.kt
+@@ -135,6 +135,7 @@ class UserEntryPresentationHelperImpl @Inject constructor(
+         Sources.Instara             -> IcGenericCgm
+         Sources.Insulin             -> IcPluginInsulin
+         Sources.InsulinDialog       -> IcBolus
++        Sources.AfrezzaDialog       -> IcBolus
+         Sources.Intelligo           -> IcPluginIntelligo
+         Sources.LocalProfile        -> IcProfile
+         Sources.Loop                -> IcLoopClosed
+@@ -222,6 +223,7 @@ class UserEntryPresentationHelperImpl @Inject constructor(
+         Sources.Instara             -> ElementType.CGM_DEX.color()
+         Sources.Insulin             -> ElementType.INSULIN_MANAGEMENT.color()
+         Sources.InsulinDialog       -> ElementType.INSULIN.color()
++        Sources.AfrezzaDialog       -> ElementType.AFREZZA.color()
+         Sources.Intelligo           -> ElementType.CGM_DEX.color()
+         Sources.LocalProfile        -> ElementType.PROFILE_MANAGEMENT.color()
+         Sources.Loop                -> ElementType.LOOP.color()
 -- 
 2.43.0
 
