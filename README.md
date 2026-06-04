@@ -69,7 +69,7 @@ git checkout -b feature/afrezza-inhaled-insulin
 
 # 3. Download and apply the combined patch
 #    (copy afrezza-combined.patch from this repo's patches/ directory)
-git am < /path/to/afrezza-combined.patch
+git am --3way /path/to/afrezza-combined.patch
 
 # 4. Build
 ./gradlew assembleFullDebug
@@ -112,36 +112,19 @@ git clone https://github.com/CAPTCG/afrezza-aaps-plugin.git
 cd AndroidAPS
 ```
 
-### Step 5: Apply the Patches
-
-**Option A — Apply all at once (recommended):**
+### Step 5: Apply the Patch
 
 ```bash
-git am < ../afrezza-aaps-plugin/patches/afrezza-combined.patch
+git am --3way ../afrezza-aaps-plugin/patches/afrezza-combined.patch
 ```
 
-**Option B — Apply one commit at a time (for review):**
+### Step 6: Verify the Patch Applied
 
 ```bash
-git am ../afrezza-aaps-plugin/patches/0001-feat-Add-Afrezza-inhaled-insulin-string-resources.patch
-git am ../afrezza-aaps-plugin/patches/0002-feat-Add-InsulinType.OREF_INHALED_AFREZZA-and-inhale.patch
-git am ../afrezza-aaps-plugin/patches/0003-feat-Add-Afrezza-to-insulin-template-list-fix-editor.patch
-git am ../afrezza-aaps-plugin/patches/0004-test-Add-IOB-curve-validation-tests-for-Afrezza-para.patch
-git am ../afrezza-aaps-plugin/patches/0005-feat-Add-Afrezza-quick-log-dialog-for-one-tap-dose-l.patch
-git am ../afrezza-aaps-plugin/patches/0006-feat-Add-Afrezza-to-navigation-system-ElementType-ic.patch
-git am ../afrezza-aaps-plugin/patches/0007-feat-Wire-Afrezza-dialog-into-navigation-quick-launc.patch
-git am ../afrezza-aaps-plugin/patches/0008-feat-Add-Afrezza-button-to-Treatment-Bottom-Sheet.patch
-git am ../afrezza-aaps-plugin/patches/0009-feat-Add-Sources.AfrezzaDialog-for-treatment-history.patch
-git am ../afrezza-aaps-plugin/patches/0010-feat-Add-Afrezza-4U-8U-12U-logging-to-Wear-OS-Actio.patch
+git log --oneline -1
 ```
 
-### Step 6: Verify the Patches Applied
-
-```bash
-git log --oneline -10
-```
-
-You should see 10 new commits starting with `feat: Add Afrezza...`
+You should see: `feat: Add Afrezza inhaled insulin support`
 
 ### Step 7: Open in Android Studio
 
@@ -293,7 +276,7 @@ wear/                         — AfrezzaActivity, ActionSource, WearActivitiesM
 
 ### Base Commit
 
-These patches were built against AAPS `dev` branch at commit `7734fac` ("Fix tests"). If the dev branch has moved forward significantly, you may need to resolve merge conflicts when applying.
+These patches are verified to apply cleanly against AndroidAPS dev commit [`3616b5a476`](https://github.com/nightscout/AndroidAPS/commit/3616b5a476) (`fix showing head`). If upstream dev has newer commits, the patches may fail to apply. In that case, check back here for updated patches or open an issue.
 
 ---
 
@@ -305,20 +288,11 @@ If the AAPS dev branch has changed since these patches were created:
 
 ```bash
 # Try applying with 3-way merge
-git am --3way < ../afrezza-aaps-plugin/patches/afrezza-combined.patch
+git am --3way ../afrezza-aaps-plugin/patches/afrezza-combined.patch
 
 # If conflicts occur, resolve them, then:
 git add .
 git am --continue
-```
-
-Or apply as a diff and commit manually:
-
-```bash
-git apply --reject ../afrezza-aaps-plugin/patches/afrezza-combined.patch
-# Fix any .rej files manually
-git add .
-git commit -m "feat: Add Afrezza inhaled insulin support"
 ```
 
 ### Build fails
@@ -347,8 +321,7 @@ If you make changes to the AAPS feature branch:
 
 ```bash
 cd AndroidAPS
-git format-patch dev --stdout > ../afrezza-aaps-plugin/patches/afrezza-combined.patch
-git format-patch dev -o ../afrezza-aaps-plugin/patches/
+git diff dev..HEAD > ../afrezza-aaps-plugin/patches/afrezza-combined.patch
 ```
 
 ---
