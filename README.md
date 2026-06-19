@@ -39,8 +39,12 @@ The AAPS `dev` branch already supports **per-bolus insulin configurations** — 
 | `ActionSource` (Wear) | Afrezza added to Wear OS Actions tile as a configurable action |
 | `EventData` | New `ActionAfrezzaPreCheck` / `ActionAfrezzaConfirmed` sealed events |
 | `DataHandlerMobile` | Phone-side handler logs Afrezza via PersistenceLayer (bypasses pump queue) |
+| `AfrezzaMaxBasalState` | New `:core:data` runtime state for the post-dose max-basal feature |
+| `DoubleKey.AfrezzaMaxBasalRate` | New configurable max-basal rate setting (shown under OpenAPS SMB) |
+| `OpenAPSSMBPlugin` | Enforces Afrezza max basal in `applyBasalConstraints`: hypo guard (pauses below BG 70), COB / extended-carb awareness, min 2.0 U/h |
+| `AfrezzaDialog` (max basal) | Optional post-dose prompt to hold an elevated basal (60/120/180 min) with a cancel button |
 
-**Total: 36 files changed, ~947 lines added.**
+**Total: 39 files changed, ~1,230 lines added.**
 
 ---
 
@@ -254,17 +258,20 @@ The oref bilinear IOB model is used with these parameters. The included test sui
 | 8 | `feat: Add Afrezza button to Treatment Bottom Sheet` | Auto-appears when inhaled insulin configured, includes Preview |
 | 9 | `feat: Add Sources.AfrezzaDialog for treatment history` | Sources enum, DB enum, SourcesExtension, UserEntryPresentation |
 | 10 | `feat: Add Afrezza 4U/8U/12U logging to Wear OS Actions tile` | AfrezzaActivity, EventData events, ActionSource, DataHandlerMobile handler |
+| 11 | `feat: Afrezza max basal (post-dose temporary basal)` | Configurable elevated basal after a dose — hypo guard, COB / extended-carb awareness, min 2.0 U/h, enforced in `OpenAPSSMBPlugin`; state in `:core:data` |
 
 ### Files Changed (by module)
 
 ```
 app/                          — ComposeMainActivity, AppNavGraph, AppRoute
-core/data/                    — Sources enum, IOB curve tests
+core/data/                    — Sources enum, IOB curve tests, AfrezzaMaxBasalState
 core/interfaces/              — InsulinType, HardLimits, EventData (Afrezza events), strings
+core/keys/                    — DoubleKey.AfrezzaMaxBasalRate, strings
 core/ui/                      — ElementType, ElementTypeStyle, strings
 database/impl/                — UserEntry.Sources DB enum
 database/persistence/         — SourcesExtension bidirectional mapping
 implementation/               — InsulinImpl, HardLimitsImpl, UserEntryPresentationHelperImpl
+plugins/aps/                  — OpenAPSSMBPlugin (Afrezza max basal setting + enforcement)
 plugins/sync/                 — DataHandlerMobile (Wear <-> phone Afrezza event handling)
 shared/tests/                 — HardLimitsMock
 ui/                           — AfrezzaDialog (3 files), InsulinManagementViewModel,
@@ -276,7 +283,10 @@ wear/                         — AfrezzaActivity, ActionSource, WearActivitiesM
 
 ### Base Commit
 
-These patches are verified to apply cleanly against AndroidAPS dev commit [`3616b5a476`](https://github.com/nightscout/AndroidAPS/commit/3616b5a476) (`fix showing head`). If upstream dev has newer commits, the patches may fail to apply. In that case, check back here for updated patches or open an issue.
+This combined patch was regenerated in June 2026 from the active feature branch and is
+applied with `git am --3way`, whose three-way merge absorbs minor upstream drift. It is
+not pinned to a single upstream commit; if `git am` reports a conflict on a current `dev`
+checkout, resolve the reported file(s) and run `git am --continue`, or open an issue.
 
 ---
 
