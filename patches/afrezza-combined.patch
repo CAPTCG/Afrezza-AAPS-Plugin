@@ -1,20 +1,20 @@
-From 948f3545c69e8fd7d1253a6a73232170a8e04ba0 Mon Sep 17 00:00:00 2001
+From 05129b32a8d6003991441207e6fdaeb938e1fed9 Mon Sep 17 00:00:00 2001
 From: Craig Gordon <craighvac@gmail.com>
-Date: Fri, 19 Jun 2026 20:48:11 +0000
+Date: Sat, 20 Jun 2026 10:25:52 +0000
 Subject: [PATCH] feat: Add Afrezza inhaled insulin support + configurable max
  basal
 
 Technosphere/Afrezza inhaled insulin (peak 40 min, DIA 2.5 h) with per-bolus IOB
 tracking, the Afrezza quick-log dialog, navigation and treatment-sheet wiring, inhaled
-DIA hard limits, and Wear OS quick-dose logging (4U/8U/12U Actions tile).
+DIA hard limits, and Wear OS quick-dose logging (4U/8U/12U).
 
-Adds the Afrezza max-basal feature: a post-dose temporary elevated basal, enforced in
-OpenAPSSMBPlugin.applyBasalConstraints with a hypo guard (pauses below BG 70), COB and
-extended-carb awareness, and a configurable rate (DoubleKey.AfrezzaMaxBasalRate) under
-the OpenAPS SMB settings. Shared runtime state lives in :core:data (AfrezzaMaxBasalState).
+Max-basal feature: post-dose temporary elevated basal enforced in
+OpenAPSSMBPlugin.applyBasalConstraints (hypo guard, COB/extended-carb awareness,
+configurable rate). State in :core:data.
 
-Standard MIN_DIA / MAX_DIA hard limits are left at vanilla AAPS values; only the inhaled
-DIA limits (1.5-4.0 h) are added.
+Rebased onto current nightscout/dev: Wear integration updated to the refactored wear
+protocol (onEvent dispatch, ConfirmAction without insulin param, logging via
+insertOrUpdateBolus); standard MIN/MAX_DIA left at vanilla values.
 ---
  .../kotlin/app/aaps/ComposeMainActivity.kt    |   1 +
  .../aaps/compose/navigation/AppNavGraph.kt    |  14 +
@@ -30,14 +30,14 @@ DIA limits (1.5-4.0 h) are added.
  core/keys/src/main/res/values/strings.xml     |   2 +
  .../core/ui/compose/navigation/ElementType.kt |   1 +
  .../ui/compose/navigation/ElementTypeStyle.kt |   4 +
- core/ui/src/main/res/values/strings.xml       |   2 +
+ core/ui/src/main/res/values/strings.xml       |   3 +
  .../app/aaps/database/entities/UserEntry.kt   |   1 +
  .../converters/SourcesExtension.kt            |   2 +
  .../implementation/insulin/InsulinImpl.kt     |   3 +-
  .../UserEntryPresentationHelperImpl.kt        |   2 +
  .../implementation/utils/HardLimitsImpl.kt    |   2 +
  .../aps/openAPSSMB/OpenAPSSMBPlugin.kt        |  41 ++-
- .../wear/wearintegration/DataHandlerMobile.kt |  85 +++++
+ .../wear/wearintegration/DataHandlerMobile.kt |  53 +++
  .../app/aaps/shared/tests/HardLimitsMock.kt   |   2 +
  .../afrezzaDialog/AfrezzaDialogScreen.kt      | 308 ++++++++++++++++++
  .../afrezzaDialog/AfrezzaDialogUiState.kt     |  19 ++
@@ -55,7 +55,7 @@ DIA limits (1.5-4.0 h) are added.
  .../app/aaps/wear/tile/source/ActionSource.kt |   8 +
  wear/src/main/res/drawable/ic_afrezza.xml     |  27 ++
  wear/src/main/res/values/strings.xml          |   5 +
- 39 files changed, 1229 insertions(+), 11 deletions(-)
+ 39 files changed, 1199 insertions(+), 10 deletions(-)
  create mode 100644 core/data/src/main/kotlin/app/aaps/core/data/afrezza/AfrezzaMaxBasalState.kt
  create mode 100644 core/data/src/test/kotlin/app/aaps/core/data/model/ICfgAfrezzaIobTest.kt
  create mode 100644 ui/src/main/kotlin/app/aaps/ui/compose/afrezzaDialog/AfrezzaDialogScreen.kt
@@ -65,10 +65,10 @@ DIA limits (1.5-4.0 h) are added.
  create mode 100644 wear/src/main/res/drawable/ic_afrezza.xml
 
 diff --git a/app/src/main/kotlin/app/aaps/ComposeMainActivity.kt b/app/src/main/kotlin/app/aaps/ComposeMainActivity.kt
-index e53d6a8172..bba55a3982 100644
+index 5e357a1bb1..3c2f0fcaf5 100644
 --- a/app/src/main/kotlin/app/aaps/ComposeMainActivity.kt
 +++ b/app/src/main/kotlin/app/aaps/ComposeMainActivity.kt
-@@ -1055,6 +1055,7 @@ class ComposeMainActivity : AppCompatActivity() {
+@@ -1109,6 +1109,7 @@ class ComposeMainActivity : AppCompatActivity() {
              // Treatment dialogs
              ElementType.CARBS                   -> navController.navigate(AppRoute.CarbsDialog.route)
              ElementType.INSULIN                 -> navController.navigate(AppRoute.InsulinDialog.route)
@@ -77,10 +77,10 @@ index e53d6a8172..bba55a3982 100644
              ElementType.FILL                    -> navController.navigate(AppRoute.FillDialog.createRoute(FillPreselect.CARTRIDGE_CHANGE.ordinal))
              ElementType.CANNULA_CHANGE          -> navController.navigate(AppRoute.FillDialog.createRoute(FillPreselect.SITE_CHANGE.ordinal))
 diff --git a/app/src/main/kotlin/app/aaps/compose/navigation/AppNavGraph.kt b/app/src/main/kotlin/app/aaps/compose/navigation/AppNavGraph.kt
-index e1d7e5db1b..f5f895bf32 100644
+index 059d837fbc..74154a978a 100644
 --- a/app/src/main/kotlin/app/aaps/compose/navigation/AppNavGraph.kt
 +++ b/app/src/main/kotlin/app/aaps/compose/navigation/AppNavGraph.kt
-@@ -68,6 +68,7 @@ import app.aaps.ui.compose.configuration.ConfigurationViewModel
+@@ -72,6 +72,7 @@ import app.aaps.ui.compose.configuration.ConfigurationViewModel
  import app.aaps.ui.compose.extendedBolusDialog.ExtendedBolusDialogScreen
  import app.aaps.ui.compose.fillDialog.FillDialogScreen
  import app.aaps.ui.compose.history.HistoryScreen
@@ -88,7 +88,7 @@ index e1d7e5db1b..f5f895bf32 100644
  import app.aaps.ui.compose.insulinDialog.InsulinDialogScreen
  import app.aaps.ui.compose.insulinManagement.InsulinManagementScreen
  import app.aaps.ui.compose.insulinManagement.InsulinManagementViewModel
-@@ -308,6 +309,19 @@ fun NavGraphBuilder.appNavGraph(
+@@ -313,6 +314,19 @@ fun NavGraphBuilder.appNavGraph(
          )
      }
  
@@ -109,10 +109,10 @@ index e1d7e5db1b..f5f895bf32 100644
          TreatmentDialogScreen(
              bgInfoState = graphViewModel.bgInfoState,
 diff --git a/app/src/main/kotlin/app/aaps/compose/navigation/AppRoute.kt b/app/src/main/kotlin/app/aaps/compose/navigation/AppRoute.kt
-index ccd213770a..cd00d61c83 100644
+index ba47954001..a955bcaeb9 100644
 --- a/app/src/main/kotlin/app/aaps/compose/navigation/AppRoute.kt
 +++ b/app/src/main/kotlin/app/aaps/compose/navigation/AppRoute.kt
-@@ -73,6 +73,7 @@ sealed class AppRoute(val route: String) {
+@@ -76,6 +76,7 @@ sealed class AppRoute(val route: String) {
      data object CalibrationDialog : AppRoute("calibration_dialog")
      data object CarbsDialog : AppRoute("carbs_dialog")
      data object InsulinDialog : AppRoute("insulin_dialog")
@@ -376,7 +376,7 @@ index c65bbe25fb..529a0012c8 100644
      val iCfg: ICfg
          get() = ICfg(this.name, insulinEndTime, insulinPeakTime, 1.0)
 diff --git a/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/rx/weardata/EventData.kt b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/rx/weardata/EventData.kt
-index 6f637866ea..36a283f5f9 100644
+index 69c82ffdb1..e8b7a35504 100644
 --- a/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/rx/weardata/EventData.kt
 +++ b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/rx/weardata/EventData.kt
 @@ -96,6 +96,9 @@ sealed class EventData : Event() {
@@ -389,18 +389,18 @@ index 6f637866ea..36a283f5f9 100644
      @Serializable
      data class ActionFillPreCheck(val insulin: Double) : EventData()
  
-@@ -215,6 +218,9 @@ sealed class EventData : Event() {
+@@ -198,6 +201,9 @@ sealed class EventData : Event() {
      @Serializable
-     data class ActionBolusConfirmed(val insulin: Double, val carbs: Int) : EventData()
+     data class ActionBolusConfirmed(val bolusId: Long) : EventData()
  
 +    @Serializable
 +    data class ActionAfrezzaConfirmed(val units: Int) : EventData()
 +
      @Serializable
-     data class ActionECarbsConfirmed(val carbs: Int, val carbsTime: Long, val duration: Int) : EventData()
+     data class ActionECarbsConfirmed(val bolusId: Long) : EventData()
  
 diff --git a/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/utils/HardLimits.kt b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/utils/HardLimits.kt
-index 04e8b8c7bc..51f84ac3ac 100644
+index 0789a131d8..51f84ac3ac 100644
 --- a/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/utils/HardLimits.kt
 +++ b/core/interfaces/src/main/kotlin/app/aaps/core/interfaces/utils/HardLimits.kt
 @@ -17,6 +17,8 @@ interface HardLimits {
@@ -421,12 +421,13 @@ index 04e8b8c7bc..51f84ac3ac 100644
      fun minPeak(): Int
      fun maxPeak(): Int
      fun minIC(): Double
-@@ -58,5 +62,3 @@ interface HardLimits {
+@@ -57,4 +61,4 @@ interface HardLimits {
+     fun ageEntryValues(): Array<CharSequence>
  
      enum class AgeType { CHILD, TEENAGE, ADULT, RESISTANT_ADULT, PREGNANT }
- }
--
--
+-}
+\ No newline at end of file
++}
 diff --git a/core/interfaces/src/main/res/values/strings.xml b/core/interfaces/src/main/res/values/strings.xml
 index f307b7a520..7532d0dc39 100644
 --- a/core/interfaces/src/main/res/values/strings.xml
@@ -441,13 +442,13 @@ index f307b7a520..7532d0dc39 100644
  
      <!-- Concentration -->
 diff --git a/core/keys/src/main/kotlin/app/aaps/core/keys/DoubleKey.kt b/core/keys/src/main/kotlin/app/aaps/core/keys/DoubleKey.kt
-index 77f0b9b099..0d66b1f8c0 100644
+index 37a3661464..8cf0fdcfdb 100644
 --- a/core/keys/src/main/kotlin/app/aaps/core/keys/DoubleKey.kt
 +++ b/core/keys/src/main/kotlin/app/aaps/core/keys/DoubleKey.kt
-@@ -60,6 +60,15 @@ enum class DoubleKey(
+@@ -67,6 +67,15 @@ enum class DoubleKey(
      ActionsFillButton2(key = "fill_button2", defaultValue = 0.0, min = 0.0, max = 20.0, titleResId = R.string.pref_title_fill_button_2, defaultedBySM = true, unitType = UnitType.INSULIN),
      ActionsFillButton3(key = "fill_button3", defaultValue = 0.0, min = 0.0, max = 20.0, titleResId = R.string.pref_title_fill_button_3, defaultedBySM = true, unitType = UnitType.INSULIN),
-     SafetyMaxBolus(key = "treatmentssafety_maxbolus", defaultValue = 3.0, min = 0.1, max = 60.0, titleResId = R.string.pref_title_max_bolus, unitType = UnitType.INSULIN),
+     SafetyMaxBolus(key = "treatmentssafety_maxbolus", defaultValue = 3.0, min = 0.1, max = 60.0, titleResId = R.string.pref_title_max_bolus, unitType = UnitType.INSULIN, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
 +    AfrezzaMaxBasalRate(
 +        key = "afrezza_max_basal_rate",
 +        defaultValue = 2.0,
@@ -461,10 +462,10 @@ index 77f0b9b099..0d66b1f8c0 100644
          key = "openapsma_max_basal",
          defaultValue = 1.0,
 diff --git a/core/keys/src/main/res/values/strings.xml b/core/keys/src/main/res/values/strings.xml
-index 63647edd13..93e2a12906 100644
+index 3e516c30a1..bcd7ab517b 100644
 --- a/core/keys/src/main/res/values/strings.xml
 +++ b/core/keys/src/main/res/values/strings.xml
-@@ -402,6 +402,8 @@
+@@ -400,6 +400,8 @@
  
      <!-- DoubleKey: APS preferences -->
      <string name="pref_title_max_basal">Maximum basal rate</string>
@@ -474,10 +475,10 @@ index 63647edd13..93e2a12906 100644
      <string name="pref_title_smb_max_iob">Max IOB for SMB</string>
      <string name="openapssmb_max_iob_summary">This value is called Max IOB in OpenAPS context\nOpenAPS will not add more insulin if current IOB is greater than this value. Value is affected by patient type too.</string>
 diff --git a/core/ui/src/main/kotlin/app/aaps/core/ui/compose/navigation/ElementType.kt b/core/ui/src/main/kotlin/app/aaps/core/ui/compose/navigation/ElementType.kt
-index 4f890e70f5..92172d2aeb 100644
+index 4ef8eca8a1..5b8b46f30c 100644
 --- a/core/ui/src/main/kotlin/app/aaps/core/ui/compose/navigation/ElementType.kt
 +++ b/core/ui/src/main/kotlin/app/aaps/core/ui/compose/navigation/ElementType.kt
-@@ -23,6 +23,7 @@ enum class ElementType(
+@@ -27,6 +27,7 @@ enum class ElementType(
      BOLUS_WIZARD(category = ElementCategory.TREATMENT, searchable = true, protection = ProtectionCheck.Protection.BOLUS),
      QUICK_WIZARD(protection = ProtectionCheck.Protection.BOLUS),
      TREATMENT(category = ElementCategory.TREATMENT, searchable = true, protection = ProtectionCheck.Protection.BOLUS),
@@ -486,10 +487,10 @@ index 4f890e70f5..92172d2aeb 100644
      // CGM
      CGM_XDRIP(category = ElementCategory.CGM, searchable = true),
 diff --git a/core/ui/src/main/kotlin/app/aaps/core/ui/compose/navigation/ElementTypeStyle.kt b/core/ui/src/main/kotlin/app/aaps/core/ui/compose/navigation/ElementTypeStyle.kt
-index a5348762d4..fc99d56438 100644
+index b48b58ae01..c9d1194065 100644
 --- a/core/ui/src/main/kotlin/app/aaps/core/ui/compose/navigation/ElementTypeStyle.kt
 +++ b/core/ui/src/main/kotlin/app/aaps/core/ui/compose/navigation/ElementTypeStyle.kt
-@@ -56,6 +56,7 @@ import app.aaps.core.ui.compose.icons.Pump
+@@ -57,6 +57,7 @@ import app.aaps.core.ui.compose.icons.Pump
  fun ElementType.color(): Color = when (this) {
      ElementType.INSULIN,
      ElementType.TREATMENT,
@@ -497,7 +498,7 @@ index a5348762d4..fc99d56438 100644
      ElementType.FILL                    -> AapsTheme.elementColors.insulin
  
      ElementType.CARBS                   -> AapsTheme.elementColors.carbs
-@@ -116,6 +117,7 @@ fun ElementType.color(): Color = when (this) {
+@@ -124,6 +125,7 @@ fun ElementType.color(): Color = when (this) {
  
  fun ElementType.icon(): ImageVector = when (this) {
      ElementType.INSULIN                 -> IcBolus
@@ -505,7 +506,7 @@ index a5348762d4..fc99d56438 100644
      ElementType.CARBS                   -> IcCarbs
      ElementType.BOLUS_WIZARD            -> IcCalculator
      ElementType.QUICK_WIZARD,
-@@ -171,6 +173,7 @@ fun ElementType.icon(): ImageVector = when (this) {
+@@ -185,6 +187,7 @@ fun ElementType.icon(): ImageVector = when (this) {
  
  fun ElementType.labelResId(): Int = when (this) {
      ElementType.INSULIN                 -> R.string.overview_insulin_label
@@ -513,7 +514,7 @@ index a5348762d4..fc99d56438 100644
      ElementType.CARBS                   -> R.string.carbs
      ElementType.BOLUS_WIZARD            -> R.string.boluswizard
      ElementType.QUICK_WIZARD            -> 0 // dynamic label
-@@ -221,6 +224,7 @@ fun ElementType.labelResId(): Int = when (this) {
+@@ -238,6 +241,7 @@ fun ElementType.labelResId(): Int = when (this) {
  
  fun ElementType.descriptionResId(): Int = when (this) {
      ElementType.INSULIN                 -> R.string.treatment_insulin_desc
@@ -522,10 +523,10 @@ index a5348762d4..fc99d56438 100644
      ElementType.BOLUS_WIZARD            -> R.string.treatment_calculator_desc
      ElementType.TREATMENT               -> R.string.treatment_desc
 diff --git a/core/ui/src/main/res/values/strings.xml b/core/ui/src/main/res/values/strings.xml
-index d55b42c006..e41707e3f9 100644
+index 2a9cb6551a..70e1c4fd7b 100644
 --- a/core/ui/src/main/res/values/strings.xml
 +++ b/core/ui/src/main/res/values/strings.xml
-@@ -211,6 +211,7 @@
+@@ -220,6 +220,7 @@
      <string name="select_site_location">Select site location</string>
      <string name="site_location">Site location</string>
      <string name="overview_insulin_label">Insulin</string>
@@ -533,7 +534,7 @@ index d55b42c006..e41707e3f9 100644
      <string name="stoptemptarget">Stop temp target</string>
      <string name="closedloop">Closed Loop</string>
      <string name="openloop">Open Loop</string>
-@@ -403,6 +404,7 @@
+@@ -450,6 +451,7 @@
      <string name="boluswizard">Bolus wizard</string>
      <string name="treatment_desc">Record insulin and carbs together</string>
      <string name="treatment_insulin_desc">Deliver bolus manually</string>
@@ -541,11 +542,17 @@ index d55b42c006..e41707e3f9 100644
      <string name="treatment_carbs_desc">Record carbs without insulin</string>
      <string name="treatment_calculator_desc">Calculate bolus</string>
      <string name="insulin_management">Insulin</string>
+@@ -1148,4 +1150,5 @@
+     <string name="sort_items">Sort Items</string>
+ 
+ 
++    <string name="afrezza_not_configured">Add Afrezza insulin in Insulin Management first</string>
+ </resources>
 diff --git a/database/impl/src/main/kotlin/app/aaps/database/entities/UserEntry.kt b/database/impl/src/main/kotlin/app/aaps/database/entities/UserEntry.kt
-index b94412e0a1..88826feaf9 100644
+index 8916473378..897009d7c4 100644
 --- a/database/impl/src/main/kotlin/app/aaps/database/entities/UserEntry.kt
 +++ b/database/impl/src/main/kotlin/app/aaps/database/entities/UserEntry.kt
-@@ -134,6 +134,7 @@ data class UserEntry(
+@@ -135,6 +135,7 @@ data class UserEntry(
      enum class Sources {
          TreatmentDialog,
          InsulinDialog,
@@ -574,10 +581,10 @@ index c84dedfd19..7e69143e97 100644
          Sources.WizardDialog        -> UserEntry.Sources.WizardDialog
          Sources.QuickWizard         -> UserEntry.Sources.QuickWizard
 diff --git a/implementation/src/main/kotlin/app/aaps/implementation/insulin/InsulinImpl.kt b/implementation/src/main/kotlin/app/aaps/implementation/insulin/InsulinImpl.kt
-index fdc459d4f5..ca14ab8d5b 100644
+index cdb88c60f6..9b92468c3a 100644
 --- a/implementation/src/main/kotlin/app/aaps/implementation/insulin/InsulinImpl.kt
 +++ b/implementation/src/main/kotlin/app/aaps/implementation/insulin/InsulinImpl.kt
-@@ -79,7 +79,8 @@ class InsulinImpl @Inject constructor(
+@@ -94,7 +94,8 @@ class InsulinImpl @Inject constructor(
          InsulinType.OREF_RAPID_ACTING,
          InsulinType.OREF_ULTRA_RAPID_ACTING,
          InsulinType.OREF_LYUMJEV,
@@ -621,7 +628,7 @@ index 0f2d4e602f..36d9b6ad85 100644
      override fun maxPeak(): Int = HardLimits.MAX_PEAK
      override fun minIC(): Double = HardLimits.MIN_IC[loadAge()]
 diff --git a/plugins/aps/src/main/kotlin/app/aaps/plugins/aps/openAPSSMB/OpenAPSSMBPlugin.kt b/plugins/aps/src/main/kotlin/app/aaps/plugins/aps/openAPSSMB/OpenAPSSMBPlugin.kt
-index fa940a5cd9..08b05f43c6 100644
+index a549293dba..4a2c839ded 100644
 --- a/plugins/aps/src/main/kotlin/app/aaps/plugins/aps/openAPSSMB/OpenAPSSMBPlugin.kt
 +++ b/plugins/aps/src/main/kotlin/app/aaps/plugins/aps/openAPSSMB/OpenAPSSMBPlugin.kt
 @@ -2,6 +2,7 @@ package app.aaps.plugins.aps.openAPSSMB
@@ -632,7 +639,7 @@ index fa940a5cd9..08b05f43c6 100644
  import app.aaps.core.data.aps.SMBDefaults
  import app.aaps.core.data.model.GlucoseUnit
  import app.aaps.core.data.plugin.PluginType
-@@ -546,6 +547,43 @@ open class OpenAPSSMBPlugin @Inject constructor(
+@@ -543,6 +544,43 @@ open class OpenAPSSMBPlugin @Inject constructor(
              val maxBasalFromDaily = preferences.get(DoubleKey.ApsMaxDailyMultiplier)
              val maxFromDaily = floor(profile.getMaxDailyBasal() * maxBasalFromDaily * 100) / 100
              absoluteRate.setIfSmaller(maxFromDaily, rh.gs(app.aaps.core.ui.R.string.limitingbasalratio, maxFromDaily, rh.gs(R.string.max_daily_basal_multiplier)), this)
@@ -676,7 +683,7 @@ index fa940a5cd9..08b05f43c6 100644
          }
          return absoluteRate
      }
-@@ -593,6 +631,7 @@ open class OpenAPSSMBPlugin @Inject constructor(
+@@ -577,6 +615,7 @@ open class OpenAPSSMBPlugin @Inject constructor(
          titleResId = R.string.openapssmb,
          items = listOf(
              DoubleKey.ApsMaxBasal,
@@ -684,7 +691,7 @@ index fa940a5cd9..08b05f43c6 100644
              DoubleKey.ApsSmbMaxIob,
              BooleanKey.ApsUseDynamicSensitivity,
              BooleanKey.ApsUseAutosens,
-@@ -626,4 +665,4 @@ open class OpenAPSSMBPlugin @Inject constructor(
+@@ -610,4 +649,4 @@ open class OpenAPSSMBPlugin @Inject constructor(
          icon = pluginDescription.icon
      )
  
@@ -692,10 +699,10 @@ index fa940a5cd9..08b05f43c6 100644
 \ No newline at end of file
 +}
 diff --git a/plugins/sync/src/main/kotlin/app/aaps/plugins/sync/wear/wearintegration/DataHandlerMobile.kt b/plugins/sync/src/main/kotlin/app/aaps/plugins/sync/wear/wearintegration/DataHandlerMobile.kt
-index 9d25697eb4..56d850b860 100644
+index d7a9ba7206..e81a646dda 100644
 --- a/plugins/sync/src/main/kotlin/app/aaps/plugins/sync/wear/wearintegration/DataHandlerMobile.kt
 +++ b/plugins/sync/src/main/kotlin/app/aaps/plugins/sync/wear/wearintegration/DataHandlerMobile.kt
-@@ -11,6 +11,7 @@ import app.aaps.core.data.model.BS
+@@ -10,6 +10,7 @@ import app.aaps.core.data.model.BS
  import app.aaps.core.data.model.GV
  import app.aaps.core.data.model.GlucoseUnit
  import app.aaps.core.data.model.HR
@@ -703,7 +710,15 @@ index 9d25697eb4..56d850b860 100644
  import app.aaps.core.data.model.RM
  import app.aaps.core.data.model.SC
  import app.aaps.core.data.model.Scene
-@@ -34,6 +35,8 @@ import app.aaps.core.interfaces.db.PersistenceLayer
+@@ -19,6 +20,7 @@ import app.aaps.core.data.model.TDD
+ import app.aaps.core.data.model.TT
+ import app.aaps.core.data.model.TrendArrow
+ import app.aaps.core.data.time.T
++import app.aaps.core.data.ue.Action
+ import app.aaps.core.data.ue.Sources
+ import app.aaps.core.data.ui.ConfirmationLine
+ import app.aaps.core.data.ui.ConfirmationRole
+@@ -37,6 +39,8 @@ import app.aaps.core.interfaces.db.PersistenceLayer
  import app.aaps.core.interfaces.db.ProcessedTbrEbData
  import app.aaps.core.interfaces.insulin.ConcentrationHelper
  import app.aaps.core.interfaces.insulin.Insulin
@@ -712,46 +727,24 @@ index 9d25697eb4..56d850b860 100644
  import app.aaps.core.interfaces.iob.GlucoseStatusProvider
  import app.aaps.core.interfaces.iob.IobCobCalculator
  import app.aaps.core.interfaces.logging.AAPSLogger
-@@ -142,6 +145,7 @@ class DataHandlerMobile @Inject constructor(
-     private val uel: UserEntryLogger,
+@@ -136,6 +140,7 @@ class DataHandlerMobile @Inject constructor(
+     private val constraintChecker: ConstraintsChecker,
      private val activePlugin: ActivePlugin,
      private val insulin: Insulin,
 +    private val insulinManager: InsulinManager,
      private val commandQueue: CommandQueue,
      private val fabricPrivacy: FabricPrivacy,
      private val uiInteraction: UiInteraction,
-@@ -388,6 +392,30 @@ class DataHandlerMobile @Inject constructor(
-                     .onErrorComplete()
-             }
-             .subscribe()
-+        disposable += rxBus
-+            .toObservable(EventData.ActionAfrezzaPreCheck::class.java)
-+            .observeOn(aapsSchedulers.io)
-+            .concatMapCompletable {
-+                rxCompletable {
-+                    aapsLogger.debug(LTag.WEAR, "ActionAfrezzaPreCheck received $it from ${it.sourceNodeId}")
-+                    handleAfrezzaPreCheck(it)
-+                }
-+                    .doOnError(fabricPrivacy::logException)
-+                    .onErrorComplete()
-+            }
-+            .subscribe()
-+        disposable += rxBus
-+            .toObservable(EventData.ActionAfrezzaConfirmed::class.java)
-+            .observeOn(aapsSchedulers.io)
-+            .concatMapCompletable {
-+                rxCompletable {
-+                    aapsLogger.debug(LTag.WEAR, "ActionAfrezzaConfirmed received $it from ${it.sourceNodeId}")
-+                    doAfrezzaBolus(it.units)
-+                }
-+                    .doOnError(fabricPrivacy::logException)
-+                    .onErrorComplete()
-+            }
-+            .subscribe()
-         disposable += rxBus
-             .toObservable(EventData.ActionECarbsPreCheck::class.java)
-             .observeOn(aapsSchedulers.io)
-@@ -1144,6 +1172,63 @@ class DataHandlerMobile @Inject constructor(
+@@ -271,6 +276,8 @@ class DataHandlerMobile @Inject constructor(
+             onCommitResult(batchExecutor.commit(it.bolusId, Sources.Wear, rh.gs(app.aaps.core.ui.R.string.overview_treatment_label)))
+         }
+         onEvent<EventData.ActionFillPresetPreCheck> { handleFillPresetPreCheck(it) }
++        onEvent<EventData.ActionAfrezzaPreCheck> { handleAfrezzaPreCheck(it) }
++        onEvent<EventData.ActionAfrezzaConfirmed> { doAfrezzaBolus(it.units) }
+         onEvent<EventData.ActionFillPreCheck> { handleFillPreCheck(it) }
+         onEvent<EventData.ActionFillConfirmed> {
+             if (!config.appInitialized) return@onEvent
+@@ -805,6 +812,52 @@ class DataHandlerMobile @Inject constructor(
          )
      }
  
@@ -761,7 +754,6 @@ index 9d25697eb4..56d850b860 100644
 +            sendError("Invalid Afrezza cartridge: ${units}U")
 +            return
 +        }
-+        // Find the Afrezza ICfg from InsulinManager
 +        val afrezzaPeak = InsulinType.OREF_INHALED_AFREZZA.insulinPeakTime
 +        val afrezzaIcfg = insulinManager.insulins.firstOrNull { it.insulinPeakTime == afrezzaPeak }
 +            ?: insulinManager.insulins.firstOrNull { InsulinType.fromPeak(it.insulinPeakTime).isInhaled }
@@ -769,14 +761,10 @@ index 9d25697eb4..56d850b860 100644
 +            sendError(rh.gs(app.aaps.core.ui.R.string.afrezza_not_configured))
 +            return
 +        }
-+        val message = "Afrezza: ${units}U"
-+        rxBus.send(
-+            EventMobileToWear(
-+                EventData.ConfirmAction(
-+                    rh.gs(app.aaps.core.ui.R.string.confirm).uppercase(), message,
-+                    returnCommand = EventData.ActionAfrezzaConfirmed(units),
-+                    insulin = units.toDouble(),
-+                )
++        sendToWear(
++            EventData.ConfirmAction(
++                rh.gs(app.aaps.core.ui.R.string.confirm).uppercase(), "Afrezza: ${units}U",
++                returnCommand = EventData.ActionAfrezzaConfirmed(units)
 +            )
 +        )
 +    }
@@ -790,31 +778,25 @@ index 9d25697eb4..56d850b860 100644
 +            return
 +        }
 +        val now = dateUtil.now()
-+        val bolus = BS(
-+            timestamp = now,
-+            amount = units.toDouble(),
-+            type = BS.Type.NORMAL,
-+            notes = "Afrezza inhaled",
-+            iCfg = afrezzaIcfg,
-+            ids = IDs(pumpId = now)
-+        )
 +        persistenceLayer.insertOrUpdateBolus(
-+            bolus = bolus,
++            bolus = BS(
++                timestamp = now,
++                amount = units.toDouble(),
++                type = BS.Type.NORMAL,
++                notes = "Afrezza inhaled",
++                iCfg = afrezzaIcfg,
++                ids = IDs(pumpId = now)
++            ),
 +            action = Action.BOLUS,
 +            source = Sources.Wear,
 +            note = "Afrezza inhaled"
 +        )
-+        uel.log(
-+            action = Action.BOLUS, source = Sources.Wear,
-+            "Afrezza inhaled",
-+            ValueWithUnit.Insulin(units.toDouble())
-+        )
 +        aapsLogger.info(LTag.WEAR, "Afrezza ${units}U logged via Wear with ICfg: ${afrezzaIcfg.insulinLabel}")
 +    }
 +
-     private fun handleECarbsPreCheck(command: EventData.ActionECarbsPreCheck) {
-         val startTimeStamp = System.currentTimeMillis() + T.mins(command.carbsTimeShift.toLong()).msecs()
-         val cob = iobCobCalculator.ads.getLastAutosensData("carbsDialog", aapsLogger, dateUtil)?.cob ?: 0.0
+     private suspend fun handleFillPreCheck(command: EventData.ActionFillPreCheck) {
+         if (rejectIfAapsClient()) return
+         runningModeGuard.rejectionMessage(PumpCommandGate.CommandKind.BOLUS)?.let {
 diff --git a/shared/tests/src/main/kotlin/app/aaps/shared/tests/HardLimitsMock.kt b/shared/tests/src/main/kotlin/app/aaps/shared/tests/HardLimitsMock.kt
 index 57dee30111..d3e8f066c5 100644
 --- a/shared/tests/src/main/kotlin/app/aaps/shared/tests/HardLimitsMock.kt
@@ -1379,10 +1361,10 @@ index 0000000000..19b67c5f6f
 +    }
 +}
 diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/insulinManagement/InsulinManagementViewModel.kt b/ui/src/main/kotlin/app/aaps/ui/compose/insulinManagement/InsulinManagementViewModel.kt
-index c35d93848a..7334647fc5 100644
+index 2807e29964..4714d5b185 100644
 --- a/ui/src/main/kotlin/app/aaps/ui/compose/insulinManagement/InsulinManagementViewModel.kt
 +++ b/ui/src/main/kotlin/app/aaps/ui/compose/insulinManagement/InsulinManagementViewModel.kt
-@@ -313,8 +313,11 @@ class InsulinManagementViewModel @Inject constructor(
+@@ -393,8 +393,11 @@ class InsulinManagementViewModel @Inject constructor(
          editedICfg.setDia(state.editorDiaHours)
          editedICfg.setPeak(state.editorPeakMinutes)
  
@@ -1396,7 +1378,7 @@ index c35d93848a..7334647fc5 100644
              showSnackbar(rh.gs(CoreUiR.string.value_out_of_hard_limits, rh.gs(CoreUiR.string.insulin_dia), editedICfg.dia))
              return false
          }
-@@ -446,6 +449,12 @@ class InsulinManagementViewModel @Inject constructor(
+@@ -525,6 +528,12 @@ class InsulinManagementViewModel @Inject constructor(
      val concentrationEnabled: Boolean
          get() = preferences.get(BooleanKey.GeneralInsulinConcentration)
  
@@ -1411,10 +1393,10 @@ index c35d93848a..7334647fc5 100644
      fun peakRange(): ClosedFloatingPointRange<Double> = hardLimits.minPeak().toDouble()..hardLimits.maxPeak().toDouble()
  }
 diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/main/MainScreen.kt b/ui/src/main/kotlin/app/aaps/ui/compose/main/MainScreen.kt
-index db08741365..c22cfd1599 100644
+index 926fcf35fd..7938451254 100644
 --- a/ui/src/main/kotlin/app/aaps/ui/compose/main/MainScreen.kt
 +++ b/ui/src/main/kotlin/app/aaps/ui/compose/main/MainScreen.kt
-@@ -432,6 +432,7 @@ fun MainScreen(
+@@ -438,6 +438,7 @@ fun MainScreen(
              showCalibration = treatmentState.showCalibration,
              showTreatment = treatmentState.showTreatment,
              showInsulin = treatmentState.showInsulin,
@@ -1444,10 +1426,10 @@ index 6c9223bcb0..53917e8c62 100644
              SensorInsert, BatteryChange, CannulaChange, Fill, SiteRotation
          )
 diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentBottomSheet.kt b/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentBottomSheet.kt
-index 72b711953a..a55352737c 100644
+index 7de5b31cde..3d3566d57e 100644
 --- a/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentBottomSheet.kt
 +++ b/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentBottomSheet.kt
-@@ -56,6 +56,7 @@ fun TreatmentBottomSheet(
+@@ -55,6 +55,7 @@ fun TreatmentBottomSheet(
      showCalibration: Boolean,
      showTreatment: Boolean,
      showInsulin: Boolean,
@@ -1455,7 +1437,7 @@ index 72b711953a..a55352737c 100644
      showCarbs: Boolean,
      showCalculator: Boolean,
      isDexcomSource: Boolean,
-@@ -89,6 +90,7 @@ fun TreatmentBottomSheet(
+@@ -88,6 +89,7 @@ fun TreatmentBottomSheet(
                  showCalibration = showCalibration,
                  showTreatment = showTreatment,
                  showInsulin = showInsulin,
@@ -1463,7 +1445,7 @@ index 72b711953a..a55352737c 100644
                  showCarbs = showCarbs,
                  showCalculator = showCalculator,
                  isDexcomSource = isDexcomSource,
-@@ -108,6 +110,7 @@ private fun TreatmentSelectionContent(
+@@ -107,6 +109,7 @@ private fun TreatmentSelectionContent(
      showCalibration: Boolean,
      showTreatment: Boolean,
      showInsulin: Boolean,
@@ -1471,7 +1453,7 @@ index 72b711953a..a55352737c 100644
      showCarbs: Boolean,
      showCalculator: Boolean,
      isDexcomSource: Boolean,
-@@ -249,6 +252,17 @@ private fun TreatmentSelectionContent(
+@@ -248,6 +251,17 @@ private fun TreatmentSelectionContent(
              )
          }
  
@@ -1489,7 +1471,7 @@ index 72b711953a..a55352737c 100644
          // Carbs
          if (showCarbs) {
              TreatmentItem(
-@@ -368,6 +382,7 @@ private fun TreatmentBottomSheetPreview() {
+@@ -358,6 +372,7 @@ private fun TreatmentBottomSheetPreview() {
              showCalibration = true,
              showTreatment = true,
              showInsulin = true,
@@ -1510,7 +1492,7 @@ index b516bfbfec..77957b423a 100644
      val showCalculator: Boolean = true,
  
 diff --git a/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentViewModel.kt b/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentViewModel.kt
-index 0dab4f3b09..557a9f3ec1 100644
+index 546e529a13..8dd558035f 100644
 --- a/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentViewModel.kt
 +++ b/ui/src/main/kotlin/app/aaps/ui/compose/treatmentsSheet/TreatmentViewModel.kt
 @@ -8,6 +8,8 @@ import app.aaps.core.data.model.RM
@@ -1532,7 +1514,7 @@ index 0dab4f3b09..557a9f3ec1 100644
  ) : ViewModel() {
  
      private val _uiState = MutableStateFlow(TreatmentUiState())
-@@ -96,6 +99,10 @@ class TreatmentViewModel @Inject constructor(
+@@ -98,6 +101,10 @@ class TreatmentViewModel @Inject constructor(
              val showInsulin = preferences.get(BooleanKey.OverviewShowInsulinButton)
              val showCarbs = preferences.get(BooleanKey.OverviewShowCarbsButton)
              val showCalculator = preferences.get(BooleanKey.OverviewShowWizardButton)
@@ -1543,7 +1525,7 @@ index 0dab4f3b09..557a9f3ec1 100644
  
              val showSettingsIcon = !preferences.simpleMode
  
-@@ -105,6 +112,7 @@ class TreatmentViewModel @Inject constructor(
+@@ -107,6 +114,7 @@ class TreatmentViewModel @Inject constructor(
                      showCalibration = showCalibration,
                      showTreatment = showTreatment,
                      showInsulin = showInsulin,
@@ -1552,10 +1534,10 @@ index 0dab4f3b09..557a9f3ec1 100644
                      showCalculator = showCalculator,
                      isDexcomSource = isDexcomSource,
 diff --git a/ui/src/main/res/values/strings.xml b/ui/src/main/res/values/strings.xml
-index 8c485ed0d5..8668c41b00 100644
+index b4cf2cc754..931f5cdbb3 100644
 --- a/ui/src/main/res/values/strings.xml
 +++ b/ui/src/main/res/values/strings.xml
-@@ -341,5 +341,24 @@
+@@ -361,4 +361,23 @@
      <string name="cal_precheck_delta_too_high">Glucose is changing too fast (Δ %1$s %3$s per 5 min, limit %2$s). Wait for stability.</string>
      <string name="cal_precheck_mark_sensor_change">Mark sensor change</string>
  
@@ -1579,12 +1561,11 @@ index 8c485ed0d5..8668c41b00 100644
 +    <string name="afrezza_no_profile">No active profile — cannot set temp basal</string>
 +
  </resources>
- 
 diff --git a/wear/src/main/AndroidManifest.xml b/wear/src/main/AndroidManifest.xml
-index adf570ecb4..1043c6fee0 100644
+index 221e607e51..56ab2d409a 100644
 --- a/wear/src/main/AndroidManifest.xml
 +++ b/wear/src/main/AndroidManifest.xml
-@@ -715,6 +715,11 @@
+@@ -718,6 +718,11 @@
              android:exported="true"
              android:label="@string/action_insulin"
              android:theme="@style/WearAppCompatDark" />
@@ -1597,7 +1578,7 @@ index adf570ecb4..1043c6fee0 100644
              android:name=".interaction.actions.ProfileSwitchActivity"
              android:exported="true"
 diff --git a/wear/src/main/kotlin/app/aaps/wear/di/WearActivitiesModule.kt b/wear/src/main/kotlin/app/aaps/wear/di/WearActivitiesModule.kt
-index 8a711ff73d..9c9fc91d7e 100644
+index 228fa821eb..d5061b1e81 100644
 --- a/wear/src/main/kotlin/app/aaps/wear/di/WearActivitiesModule.kt
 +++ b/wear/src/main/kotlin/app/aaps/wear/di/WearActivitiesModule.kt
 @@ -7,6 +7,7 @@ import app.aaps.wear.tile.ActionsTileSettingsActivity
@@ -1608,7 +1589,7 @@ index 8a711ff73d..9c9fc91d7e 100644
  import app.aaps.wear.interaction.actions.BackgroundActionActivity
  import app.aaps.wear.interaction.actions.BolusActivity
  import app.aaps.wear.interaction.actions.CarbActivity
-@@ -43,6 +44,7 @@ abstract class WearActivitiesModule {
+@@ -42,6 +43,7 @@ abstract class WearActivitiesModule {
      @ContributesAndroidInjector abstract fun contributesBackgroundActionActivity(): BackgroundActionActivity
  
      @ContributesAndroidInjector abstract fun contributesAcceptActivity(): AcceptActivity
@@ -1879,7 +1860,7 @@ index 0000000000..a5eb01b9f1
 +        android:fillColor="#00000000" />
 +</vector>
 diff --git a/wear/src/main/res/values/strings.xml b/wear/src/main/res/values/strings.xml
-index e35902de26..7d06555b26 100644
+index ce1a38834d..cc01dbf1bd 100644
 --- a/wear/src/main/res/values/strings.xml
 +++ b/wear/src/main/res/values/strings.xml
 @@ -89,6 +89,11 @@

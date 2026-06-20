@@ -44,7 +44,7 @@ The AAPS `dev` branch already supports **per-bolus insulin configurations** — 
 | `OpenAPSSMBPlugin` | Enforces Afrezza max basal in `applyBasalConstraints`: hypo guard (pauses below BG 70), COB / extended-carb awareness, min 2.0 U/h |
 | `AfrezzaDialog` (max basal) | Optional post-dose prompt to hold an elevated basal (60/120/180 min) with a cancel button |
 
-**Total: 39 files changed, ~1,230 lines added.**
+**Total: 39 files changed, ~1,200 lines added.**
 
 ---
 
@@ -283,10 +283,11 @@ wear/                         — AfrezzaActivity, ActionSource, WearActivitiesM
 
 ### Base Commit
 
-This combined patch was regenerated in June 2026 from the active feature branch and is
-applied with `git am --3way`, whose three-way merge absorbs minor upstream drift. It is
-not pinned to a single upstream commit; if `git am` reports a conflict on a current `dev`
-checkout, resolve the reported file(s) and run `git am --continue`, or open an issue.
+This combined patch was regenerated against current `nightscout/AndroidAPS` `dev`
+(June 2026), including the Wear OS integration rebased onto upstream's refactored wear
+protocol. It applies cleanly with `git am --3way` and coexists with the Eversense patch
+(the two share only `core/keys/strings.xml`, which auto-merges). If a much newer `dev`
+introduces fresh drift, resolve any reported file(s) and run `git am --continue`.
 
 ---
 
