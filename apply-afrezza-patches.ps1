@@ -58,7 +58,10 @@ if ($LASTEXITCODE -ne 0) {
 # Step 3: Create a feature branch at that commit
 $BranchName = "feature/afrezza-inhaled-insulin"
 Write-Host "[3/4] Creating feature branch: $BranchName" -ForegroundColor Green
-git branch -D $BranchName 2>$null
+# Delete the branch if it exists (ignore failure if it does not).
+$ErrorActionPreference = "Continue"
+git branch -D $BranchName 2>&1 | Out-Null
+$ErrorActionPreference = "Stop"
 git checkout -b $BranchName
 
 # Step 4: Apply the patch (plain git apply - clean on this base)
