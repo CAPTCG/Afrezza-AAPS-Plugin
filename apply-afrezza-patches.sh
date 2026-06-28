@@ -1,88 +1,73 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # apply-afrezza-patches.sh
 #
-# Clones AAPS dev branch, applies the Afrezza patches, and prepares for building.
+# Clones AndroidAPS, checks out the exact tested base commit, and applies the
+# Afrezza patch with `git apply`.
 #
-# Usage:
-#   ./apply-afrezza-patches.sh [target_directory]
+# The patch is a plain `git diff` (not a format-patch), so it is applied with
+# `git apply`, NOT `git am`. It was generated and verified against AndroidAPS dev
+# at commit 6afc35c058fe8ee915bb874da8027101ffcaa6c3 and applies cleanly there
+# with zero conflicts. Applying onto a newer dev requires `--3way` and manual
+# conflict resolution - see README (NOT recommended for dosing-relevant files).
 #
-# Example:
-#   ./apply-afrezza-patches.sh ~/AndroidAPS-Afrezza
+# Usage: ./apply-afrezza-patches.sh [target_dir]
 #
+set -euo pipefail
 
-set -e
-
+BASE_COMMIT="6afc35c058fe8ee915bb874da8027101ffcaa6c3"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PATCHES_DIR="$SCRIPT_DIR/patches"
 TARGET_DIR="${1:-$SCRIPT_DIR/../AndroidAPS-Afrezza}"
+COMBINED_PATCH="$SCRIPT_DIR/patches/afrezza-combined.patch"
 
 echo "============================================"
-echo "  Afrezza AAPS Plugin — Patch Applicator"
+echo "  Afrezza AAPS Plugin - Patch Applicator"
 echo "============================================"
-echo ""
+echo
 
-# Check patches exist
-if [ ! -f "$PATCHES_DIR/afrezza-combined.patch" ]; then
-    echo "ERROR: Patch files not found in $PATCHES_DIR"
-    echo "       Make sure you're running this from the repository root."
-    exit 1
-fi
+[ -f "$COMBINED_PATCH" ] || { echo "ERROR: patch not found at $COMBINED_PATCH"; exit 1; }
+command -v git >/dev/null || { echo "ERROR: git is not installed."; exit 1; }
 
-# Check git is installed
-if ! command -v git &> /dev/null; then
-    echo "ERROR: git is not installed. Please install git first."
-    exit 1
-fi
-
-# Step 1: Clone AAPS
 if [ -d "$TARGET_DIR/.git" ]; then
-    echo "[1/4] Target directory exists, using existing repo: $TARGET_DIR"
-    cd "$TARGET_DIR"
+  echo "[1/4] Using existing repo: $TARGET_DIR"
+  cd "$TARGET_DIR"
 else
-    echo "[1/4] Cloning AAPS repository to $TARGET_DIR ..."
-    git clone https://github.com/nightscout/AndroidAPS.git "$TARGET_DIR"
-    cd "$TARGET_DIR"
+  echo "[1/4] Cloning AndroidAPS to $TARGET_DIR ..."
+  git clone https://github.com/nightscout/AndroidAPS.git "$TARGET_DIR"
+  cd "$TARGET_DIR"
 fi
 
-# Step 2: Switch to dev branch
-echo "[2/4] Switching to dev branch..."
-git checkout dev
-git pull origin dev
+echo "[2/4] Checking out tested base commit $BASE_COMMIT ..."
+git fetch origin
+git checkout "$BASE_COMMIT"
 
-# Step 3: Create feature branch
-BRANCH_NAME="feature/afrezza-inhaled-insulin"
-if git show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
-    echo "       Branch $BRANCH_NAME already exists. Switching to it."
-    git checkout "$BRANCH_NAME"
-else
-    echo "[3/4] Creating feature branch: $BRANCH_NAME"
-    git checkout -b "$BRANCH_NAME"
-fi
+BRANCH="feature/afrezza-inhaled-insulin"
+echo "[3/4] Creating feature branch: $BRANCH"
+git branch -D "$BRANCH" 2>/dev/null || true
+git checkout -b "$BRANCH"
 
-# Step 4: Apply patches
-echo "[4/4] Applying Afrezza patches..."
-if git am --3way < "$PATCHES_DIR/afrezza-combined.patch"; then
-    echo ""
-    echo "============================================"
-    echo "  SUCCESS — All patches applied!"
-    echo "============================================"
-    echo ""
-    echo "  Repository: $TARGET_DIR"
-    echo "  Branch:     $BRANCH_NAME"
-    echo ""
-    echo "  Next steps:"
-    echo "    1. Open in Android Studio"
-    echo "    2. Run tests:  ./gradlew :core:data:test --tests '*ICfgAfrezzaIobTest*'"
-    echo "    3. Build APK:  ./gradlew assembleFullDebug"
-    echo "    4. Build Wear: ./gradlew :wear:assembleFullDebug"
-    echo ""
+echo "[4/4] Applying Afrezza patch..."
+if git apply --verbose "$COMBINED_PATCH"; then
+  git add -A
+  git commit -m "Add Afrezza inhaled insulin support" >/dev/null
+  echo
+  echo "============================================"
+  echo "  SUCCESS - patch applied and committed."
+  echo "============================================"
+  echo "  Repository: $TARGET_DIR"
+  echo "  Branch:     $BRANCH"
+  echo "  Base:       $BASE_COMMIT"
+  echo
+  echo "  Next: open in Android Studio, then"
+  echo "    ./gradlew assembleFullDebug"
+  echo "    ./gradlew :wear:assembleFullDebug"
+  echo
+  echo "  READ THE README SAFETY NOTICE BEFORE USING THIS ON A PUMP."
+  echo
 else
-    echo ""
-    echo "WARNING: Some patches had conflicts."
-    echo "Resolve the conflicts, then run:"
-    echo "  cd $TARGET_DIR"
-    echo "  git add ."
-    echo "  git am --continue"
-    echo ""
+  echo
+  echo "ERROR: patch did not apply cleanly on $BASE_COMMIT."
+  echo "This base is the tested one and should apply without conflicts."
+  echo "If you changed the base commit, that is the likely cause."
+  exit 1
 fi
