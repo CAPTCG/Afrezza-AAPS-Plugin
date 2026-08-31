@@ -3,6 +3,15 @@
 ## Target Branch: `dev` (nightscout/AndroidAPS)
 ## AAPS Version: Post-3.4.x (new insulin management architecture)
 
+> **This is the original design/research document from before implementation started.** It's kept
+> for the pharmacokinetic research and reasoning behind the early decisions, but the numbers and
+> some of the design calls below are no longer what shipped — most notably, the single fixed
+> `peak=40min, DIA=2.5h` ICfg approach described in "Design decision" below was superseded by a
+> stored `isInhaled` flag on `ICfg` with its own hard-limit ranges (see `HardLimits.LIMIT_PEAK_INHALED`
+> = 10-30 min, `LIMIT_DIA_INHALED` = 1.0-3.0 h), letting the user's insulin editor set the actual
+> peak/DIA within those ranges rather than fixing a single value for every cartridge size. See the
+> main [README](../README.md) for what's actually in the patch.
+
 ---
 
 ## Executive Summary

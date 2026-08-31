@@ -1,114 +1,134 @@
-# Eversense E3/365 CGM Plugin for AndroidAPS dev
+# Afrezza (Technosphere) Inhaled Insulin Plugin for AndroidAPS
 
-Patches to add Eversense E3 and E365 CGM support to any AndroidAPS dev build.
+A patch that adds Afrezza inhaled insulin as a first-class insulin type in AndroidAPS — its own
+pharmacokinetic curve, hard limits, dose-logging dialog (phone and Wear OS), and IOB tracking that
+runs independently of whatever injected/pumped insulin the loop is already using.
 
-Developed by [n0rb33r7](https://github.com/n0rb33r7), [bastiaanv](https://github.com/bastiaanv), and [CAPTCG](https://github.com/CAPTCG).
+Developed by [CAPTCG](https://github.com/CAPTCG).
+
+This is an experimental, community-developed modification. It is not approved by any regulatory
+body. **Discuss any changes to your diabetes management with your endocrinologist before use, and
+always keep fingerstick meter access as a backup.**
 
 ---
 
-## Patches Included
+## What This Patch Adds
 
-| Patch | Description | Apply Order |
-| --- | --- | --- |
-| `eversense-combined.patch` | Full Eversense E3/365 BLE driver, plugin, and core integration | 1st |
-| `eversense-e3-stabilization-v2.patch` | E3 stabilization fixes for BT sync, placement signal, and timer drift | 2nd |
+- **Afrezza as a real insulin type** (`InsulinType.OREF_INHALED_AFREZZA`) in Insulin Management,
+  alongside Novorapid/Fiasp/Lyumjev/etc. — factory default peak 15 min, DIA 1.5 h, per published
+  Technosphere pharmacokinetic data.
+- **Its own hard-limit ranges** — inhaled insulin acts far faster than injected insulin, so it's
+  validated against `HardLimits.LIMIT_PEAK_INHALED` (10–30 min) and `LIMIT_DIA_INHALED` (1.0–3.0 h)
+  instead of the standard injected-insulin ranges, which would reject every valid Afrezza profile.
+- **Stored, not derived, identity** — `ICfg.isInhaled` is authored in the insulin editor and
+  persisted (DB, JSON catalogue, Nightscout sync), not re-derived from the peak value on every read.
+  That means editing the peak anywhere in its valid 10–30 min range keeps the dose recognized as
+  Afrezza — earlier designs that inferred "inhaled" purely from an exact peak match lost that
+  identity the moment a user adjusted it off the factory default.
+- **One-tap dose logging** — a dedicated Afrezza dialog (phone) and Wear OS tile/activity, both
+  offering the three real cartridge sizes (4U / 8U / 12U). Logged as a `BS.Type.NORMAL` bolus using
+  the U100-equivalent halved amount (4U → 2.0, 8U → 4.0, 12U → 6.0), tagged with the Afrezza `ICfg`
+  so IOB math uses the correct curve.
+- **Distinct treatment-list presentation** — Afrezza doses show their own "Afrezza" type label and
+  icon in the treatment list and Overview action bar, instead of being lumped in as a generic "Meal
+  Bolus".
+- **Full Nightscout sync** — the `isInhaled` flag round-trips through NS sync (`NSICfg`/`RemoteICfg`)
+  and the local database (reconstructed from the stored peak where an older payload has no flag, since
+  the inhaled and injected peak ranges are disjoint and unambiguous).
+- **Local-only, never remote-deliverable** — Afrezza is inhaled directly by the user; the app is
+  documenting a dose that already physically happened, not commanding a pump. It's explicitly kept
+  off the master/client relay path (same category as Fill) and rejected outright if invoked from an
+  AAPS client, so a dose is never silently duplicated or desynced between master and client.
 
 ---
 
 ## Requirements
 
-- An existing AndroidAPS dev clone from https://github.com/nightscout/AndroidAPS
+- An existing AndroidAPS dev clone from https://github.com/nightscout/AndroidAPS, **or** let the
+  apply script clone one for you
 - Android Studio
 - Git
 
 ---
 
-## How to Add Eversense to Your AndroidAPS Dev Build
+## How to Apply
 
-### Step 1 - Download the patches
+### Option 1 — automated script (recommended)
 
-Click the green Code button on this page and select Download ZIP.
+1. Download this repository (Code → Download ZIP, or `git clone`).
+2. Run the applicator for your platform from the extracted folder:
 
-Extract the ZIP somewhere on your computer e.g. `C:\EversensePatches\`
+   **Windows (PowerShell):**
+       .\apply-afrezza-patches.ps1
 
-> **Note:** The base patch is verified to apply cleanly against AndroidAPS dev commit [`3616b5a476`](https://github.com/nightscout/AndroidAPS/commit/3616b5a476) (`fix showing head`). If upstream dev has newer commits, the patch may fail to apply. In that case, check back here for an updated patch or open an issue.
+   **macOS/Linux:**
+       ./apply-afrezza-patches.sh
 
-### Step 2 - Switch to the dev branch
+   By default this clones AndroidAPS dev into `../AndroidAPS-Afrezza` next to this folder, checks
+   out the exact commit the patch was verified against, creates a `feature/afrezza-inhaled-insulin`
+   branch, and applies + commits the patch. Pass a path as the first argument to use an existing
+   clone instead.
 
-Before applying the patches, make sure you are on the dev branch. In Android Studio:
+### Option 2 — manual
 
-1. Look at the bottom right corner and click the branch name
-2. Find `origin/dev` in the list and click Checkout
-3. Wait for Android Studio to finish switching branches
-
-Note: If you do not see `origin/dev`, click Fetch first.
-
-### Step 3 - Apply both patches in order
-
-Open the Terminal in Android Studio and run:
-
-    git am --3way C:/EversensePatches/eversense-combined.patch
-    git apply C:/EversensePatches/eversense-e3-stabilization-v2.patch
+    git clone https://github.com/nightscout/AndroidAPS.git
+    cd AndroidAPS
+    git checkout 283a184f60eb8b18dac42e228faebbe260c3aa22
+    git checkout -b feature/afrezza-inhaled-insulin
+    git apply --verbose /path/to/patches/afrezza-combined.patch
     git add -A
-    git commit -m "E3 stabilization: BT sync, placement signal, timer drift (E3 only, 365 unchanged)"
+    git commit -m "Add Afrezza inhaled insulin support"
 
-### Step 4 - Verify
+> **Note:** the patch is a plain `git diff`, applied with `git apply` — **not** `git am`. It is
+> verified to apply cleanly, with zero conflicts, against AndroidAPS dev at commit
+> [`283a184f6`](https://github.com/nightscout/AndroidAPS/commit/283a184f60eb8b18dac42e228faebbe260c3aa22).
+> If upstream dev has moved on since, either check out that exact commit first (recommended — the
+> app still builds and runs fine on it), or apply with `--3way` and resolve any conflicts by hand
+> before trusting it for real dosing.
 
-    git log --oneline -2
-
-You should see both commits: the Eversense integration and the E3 stabilization.
-
-### Step 5 - Build
+### Build
 
 1. File → Sync Project with Gradle Files
 2. Build → Generate Signed Bundle/APK → APK → full → release
-3. Install the APK on your phone
+3. Build the Wear OS module too if you use a watch: `:wear:assembleFullRelease`
+4. Install the APK(s) on your phone/watch
 
 ---
 
-## What the Base Patch Adds (eversense-combined.patch)
+## Setting Up Afrezza After Installing
 
-- Complete Eversense E3 and E365 BLE driver with GATT callback, SecureV2 crypto, and all packet types
-- EversensePlugin with DMS cloud upload, calibration, status, and placement activities
-- Core registration — SourceSensor enums, DB models, PluginsListModule, notification IDs
-- E365 auth with shortcut optimization — DMS only called on fresh install/restart
-- E365 BLE disconnect timeout set to 0 (never disconnect)
-- E365 fullSync failure handling — disconnects to reset BLE session
-- E3 calibration with correct register addresses and clock drift sync
-- E3 battery percentage with correct register mapping
-- Credential sync from AAPS preferences into SECURE_STATE
-- Package namespace: `app.aaps.plugins.eversense`
-
----
-
-## What the Stabilization Patch Fixes (eversense-e3-stabilization-v2.patch)
-
-Field-tested E3 fixes contributed by [overfrenk](https://github.com/overfrenk). All changes are E3-specific — E365 behavior is unchanged.
-
-**1. Bluetooth Sync Optimization and Lag Removal**
-
-The previous system suffered from 1–2 minute delays or missed cycles due to rigid timers and the parking buffer. The glucose freshness cutoff was reduced from 270s to 60s, the full sync threshold from 270s to 180s, and the BLE disconnect timeout from 300s to 10s. Glucose data delivery to AAPS is now near-instantaneous and aligned with the hardware push packets.
-
-**2. Placement Signal Stability**
-
-Optimized the management of diagnostic packets for transmitter placement on the arm. Diagnostic mode now toggles on `onResume`/`onPause` instead of `onCreate`/`onDestroy`, making the UI more responsive. Removed the `rssiToStrength` override during RSSI reads that caused anomalous signal spikes. The placement indicator no longer flickers with erratic values, making the pairing procedure smoother and more reliable.
-
-**3. Home Screen Time Drift Fix (E3 only)**
-
-The sensor age counter on the AAPS home screen was constantly slipping backward. This was caused by the forced overwriting of the SENSOR_CHANGE event at every Bluetooth cycle, which injected the raw transmitter uptime (subject to the chip's deep-sleep pauses). This overwrite is now disabled for E3 only — AAPS uses the system timestamp (absolute clock) and no longer loses minutes, allowing precise manual reset by the user. E365 retains the original sync behavior.
+1. Open **AAPS Settings → Insulin Management**.
+2. Add a new insulin, and pick the **Afrezza** template from the list — this seeds the correct
+   inhaled peak/DIA defaults and marks it as inhaled.
+3. Adjust peak/DIA within the inhaled ranges (10–30 min peak, 1.0–3.0 h DIA) if your own response
+   differs from the factory default; the peak field is locked from the general preset chips since
+   Afrezza's peak range doesn't overlap the injected-insulin presets.
+4. Once an inhaled insulin exists in your insulin list, the **Afrezza** button appears in the
+   Overview action bar / treatment dialog (and the Wear OS action list) automatically.
+5. To log a dose: tap **Afrezza**, pick the cartridge you inhaled (4U / 8U / 12U), confirm. It's
+   logged immediately as a bolus with the Afrezza curve — no wizard/carb entry required, though the
+   dialog offers to open the Bolus Calculator afterward if you also want to log carbs for the meal.
 
 ---
 
-## Transmitter Support
+## Known Limitations
 
-| Transmitter | Notes |
-| --- | --- |
-| Eversense E3 (180-day) | Standalone after initial sensor initialization via official Eversense app |
-| Eversense 365 (1-year) | Standalone — after first successful auth, works indefinitely offline/airplane mode |
+- This patch is actively evolving. Check this repo's commit history for the latest state before
+  relying on it for a real dosing decision.
+- The IOB curve uses AAPS's existing bilinear oref model with Afrezza-specific peak/DIA parameters,
+  not a distinct pharmacokinetic model — this is clinically adequate per the published Technosphere
+  data but is not a perfect fit to Afrezza's real absorption curve at every point.
+- A single `ICfg` covers all three cartridge sizes; per-size curve differences are small enough that
+  AAPS's existing dose-proportional IOB scaling (via `bolus.amount`) handles it without needing three
+  separate insulin profiles.
+- `docs/IMPLEMENTATION_PLAN.md` is the original design/research document from before implementation
+  started — useful for the pharmacokinetic sourcing and reasoning, but some of its specifics (notably
+  the single fixed `peak=40min, DIA=2.5h` design) were superseded by what's described above. See the
+  note at the top of that file.
 
 ---
 
 ## Related
 
-- PR: https://github.com/nightscout/AndroidAPS/pull/4869
-- Original work: https://github.com/nightscout/AndroidAPS/pull/4474
+- Nightscout `AndroidAPS` issue #269 ("Insulin Management" improvement request) motivated part of
+  the underlying per-bolus insulin-configuration groundwork this patch builds on.

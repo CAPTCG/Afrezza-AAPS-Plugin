@@ -6,7 +6,7 @@
 #
 # The patch is a plain `git diff` (not a format-patch), so it is applied with
 # `git apply`, NOT `git am`. It was generated and verified against AndroidAPS dev
-# at commit 6afc35c058fe8ee915bb874da8027101ffcaa6c3, and applies cleanly there
+# at commit 283a184f60eb8b18dac42e228faebbe260c3aa22, and applies cleanly there
 # with zero conflicts. Applying onto a newer dev requires `--3way` and manual
 # conflict resolution - see README (NOT recommended for dosing-relevant files).
 #
@@ -19,7 +19,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$BaseCommit    = "6afc35c058fe8ee915bb874da8027101ffcaa6c3"
+$BaseCommit    = "283a184f60eb8b18dac42e228faebbe260c3aa22"
 $PatchesDir    = Join-Path $PSScriptRoot "patches"
 $CombinedPatch = Join-Path $PatchesDir "afrezza-combined.patch"
 

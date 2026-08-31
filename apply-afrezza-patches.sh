@@ -7,7 +7,7 @@
 #
 # The patch is a plain `git diff` (not a format-patch), so it is applied with
 # `git apply`, NOT `git am`. It was generated and verified against AndroidAPS dev
-# at commit 6afc35c058fe8ee915bb874da8027101ffcaa6c3 and applies cleanly there
+# at commit 283a184f60eb8b18dac42e228faebbe260c3aa22 and applies cleanly there
 # with zero conflicts. Applying onto a newer dev requires `--3way` and manual
 # conflict resolution - see README (NOT recommended for dosing-relevant files).
 #
@@ -15,7 +15,7 @@
 #
 set -euo pipefail
 
-BASE_COMMIT="6afc35c058fe8ee915bb874da8027101ffcaa6c3"
+BASE_COMMIT="283a184f60eb8b18dac42e228faebbe260c3aa22"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET_DIR="${1:-$SCRIPT_DIR/../AndroidAPS-Afrezza}"
 COMBINED_PATCH="$SCRIPT_DIR/patches/afrezza-combined.patch"
